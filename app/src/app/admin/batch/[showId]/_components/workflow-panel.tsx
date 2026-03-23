@@ -92,6 +92,9 @@ export function WorkflowPanelInner({
   // Auto-poll: refresh every 10s when a job is active
   const [isPolling, setIsPolling] = useState(false);
 
+  // Tab state for episode list
+  const [activeTab, setActiveTab] = useState<"episodes" | "shorts">("episodes");
+
   useEffect(() => {
     fetchEpisodes();
   }, [fetchEpisodes]);
@@ -285,75 +288,95 @@ export function WorkflowPanelInner({
             </p>
           )}
 
-          {/* Episode List Preview */}
-          {episodes.length > 0 && (
-            <div className="mt-4">
-              <div className="mb-2 text-xs font-medium text-zinc-500">
-                {episodes.length} episodes found
-              </div>
-              <div className="max-h-80 overflow-y-auto rounded border border-zinc-200">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 border-b bg-zinc-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">Title</th>
-                      <th className="px-3 py-2 text-left font-medium">Date</th>
-                      <th className="px-3 py-2 text-right font-medium">Duration</th>
-                      <th className="px-3 py-2 text-right font-medium">Views</th>
-                      <th className="px-3 py-2 text-center font-medium">Transcript</th>
-                      <th className="px-3 py-2 text-center font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {episodes.slice(0, 50).map((ep) => (
-                      <tr key={ep.id} className="hover:bg-zinc-50">
-                        <td className="max-w-xs truncate px-3 py-2" title={ep.title}>
-                          <span className="inline-flex items-center gap-1.5">
-                            {ep.title}
-                            {ep.content_type === "short" && (
-                              <span className="inline-block rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                                Short
-                              </span>
-                            )}
-                            {ep.content_type === "clip" && (
-                              <span className="inline-block rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
-                                Clip
-                              </span>
-                            )}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
-                          {ep.published_at
-                            ? new Date(ep.published_at).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500">
-                          {ep.duration_display || "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500">
-                          {ep.view_count?.toLocaleString() || "—"}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {ep.has_transcript ? (
-                            <span className="text-green-600">✓</span>
-                          ) : (
-                            <span className="text-zinc-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <MiniStatus status={ep.processing_status} />
-                        </td>
+          {/* Episode List with Tabs */}
+          {episodes.length > 0 && (() => {
+            const episodesList = episodes.filter((e) => e.content_type !== "short");
+            const shortsList = episodes.filter((e) => e.content_type === "short");
+            const displayList = activeTab === "episodes" ? episodesList : shortsList;
+
+            return (
+              <div className="mt-4">
+                {/* Tabs */}
+                <div className="mb-2 flex items-center gap-1 border-b border-zinc-200">
+                  <button
+                    onClick={() => setActiveTab("episodes")}
+                    className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px ${
+                      activeTab === "episodes"
+                        ? "border-blue-600 text-blue-600"
+                        : "border-transparent text-zinc-400 hover:text-zinc-600"
+                    }`}
+                  >
+                    Episodes ({episodesList.length})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("shorts")}
+                    className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px ${
+                      activeTab === "shorts"
+                        ? "border-purple-600 text-purple-600"
+                        : "border-transparent text-zinc-400 hover:text-zinc-600"
+                    }`}
+                  >
+                    Shorts ({shortsList.length})
+                  </button>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto rounded border border-zinc-200">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 border-b bg-zinc-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Title</th>
+                        <th className="px-3 py-2 text-left font-medium">Date</th>
+                        <th className="px-3 py-2 text-right font-medium">Duration</th>
+                        <th className="px-3 py-2 text-right font-medium">Views</th>
+                        <th className="px-3 py-2 text-center font-medium">Transcript</th>
+                        <th className="px-3 py-2 text-center font-medium">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {episodes.length > 50 && (
-                  <div className="border-t bg-zinc-50 px-3 py-2 text-center text-xs text-zinc-400">
-                    Showing 50 of {episodes.length} episodes
-                  </div>
-                )}
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {displayList.slice(0, 100).map((ep) => (
+                        <tr key={ep.id} className="hover:bg-zinc-50">
+                          <td className="max-w-xs truncate px-3 py-2" title={ep.title}>
+                            {ep.title}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                            {ep.published_at
+                              ? new Date(ep.published_at).toLocaleDateString()
+                              : "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-500">
+                            {ep.duration_display || "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-500">
+                            {ep.view_count?.toLocaleString() || "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {ep.has_transcript ? (
+                              <span className="text-green-600">\u2713</span>
+                            ) : (
+                              <span className="text-zinc-300">\u2014</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <MiniStatus status={ep.processing_status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {displayList.length > 100 && (
+                    <div className="border-t bg-zinc-50 px-3 py-2 text-center text-xs text-zinc-400">
+                      Showing 100 of {displayList.length}
+                    </div>
+                  )}
+                  {displayList.length === 0 && (
+                    <div className="px-3 py-6 text-center text-xs text-zinc-400">
+                      No {activeTab} found
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </CollapsibleSection>
 
