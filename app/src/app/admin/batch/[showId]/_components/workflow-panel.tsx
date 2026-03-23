@@ -88,9 +88,29 @@ export function WorkflowPanelInner({
     setLoading(false);
   }, [showId]);
 
+  // Auto-poll: refresh every 10s when a job is active
+  const [isPolling, setIsPolling] = useState(false);
+
   useEffect(() => {
     fetchEpisodes();
   }, [fetchEpisodes]);
+
+  useEffect(() => {
+    if (!isPolling) return;
+    const interval = setInterval(fetchEpisodes, 10_000);
+    return () => clearInterval(interval);
+  }, [isPolling, fetchEpisodes]);
+
+  // Auto-stop polling when everything is done
+  useEffect(() => {
+    if (isPolling && stats.pending === 0 && stats.total > 0) {
+      // Check if any processing is happening
+      const hasProcessing = episodes.some(e => e.processing_status === "processing");
+      if (!hasProcessing) {
+        setIsPolling(false);
+      }
+    }
+  }, [isPolling, stats, episodes]);
 
   // ─── Step 1: Discovery ───────────────────────────────────────
   const handleResolveChannel = async () => {
@@ -134,8 +154,8 @@ export function WorkflowPanelInner({
       });
       const data = await res.json();
       if (res.ok) {
-        setDiscoverResult(`Discovery started (Job: ${data.jobId}). Refreshing in 30s...`);
-        setTimeout(fetchEpisodes, 30000);
+        setDiscoverResult(`Discovery started. Auto-refreshing...`);
+        setIsPolling(true);
       } else {
         setDiscoverResult(`Error: ${data.error}`);
       }
@@ -156,8 +176,8 @@ export function WorkflowPanelInner({
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Transcript fetching started (Job: ${data.jobId})`);
-        setTimeout(fetchEpisodes, 60000);
+        alert(`Transcript fetching started. Page will auto-refresh.`);
+        setIsPolling(true);
       } else {
         alert(`Error: ${data.error}`);
       }
@@ -182,8 +202,8 @@ export function WorkflowPanelInner({
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Processing started (Job: ${data.jobId})`);
-        setTimeout(fetchEpisodes, 60000);
+        alert(`Processing started. Page will auto-refresh.`);
+        setIsPolling(true);
       } else {
         alert(`Error: ${data.error}`);
       }
