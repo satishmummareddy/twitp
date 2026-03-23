@@ -484,21 +484,65 @@ export function WorkflowPanelInner({
             </div>
           </div>
 
-          {/* Transcript status breakdown */}
-          {episodes.length > 0 && (
-            <div className="flex gap-6 text-sm">
-              <div>
-                <span className="font-medium text-green-600">{stats.withTranscript}</span>{" "}
-                <span className="text-zinc-400">have transcripts</span>
+          {/* Episode transcript status list */}
+          {episodes.length > 0 && (() => {
+            const episodesOnly = episodes.filter((e) => e.content_type !== "short");
+            return (
+              <div className="mt-2">
+                <div className="mb-2 flex gap-6 text-sm">
+                  <div>
+                    <span className="font-medium text-green-600">{stats.withTranscript}</span>{" "}
+                    <span className="text-zinc-400">have transcripts</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-amber-600">
+                      {episodesOnly.length - stats.withTranscript}
+                    </span>{" "}
+                    <span className="text-zinc-400">missing</span>
+                  </div>
+                </div>
+                <div className="max-h-60 overflow-y-auto rounded border border-zinc-200">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 border-b bg-zinc-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Episode</th>
+                        <th className="px-3 py-2 text-left font-medium">Date</th>
+                        <th className="px-3 py-2 text-right font-medium">Duration</th>
+                        <th className="px-3 py-2 text-center font-medium">Transcript</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {episodesOnly.slice(0, 100).map((ep) => (
+                        <tr key={ep.id} className="hover:bg-zinc-50">
+                          <td className="max-w-xs truncate px-3 py-2" title={ep.title}>
+                            {ep.title}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                            {ep.published_at ? new Date(ep.published_at).toLocaleDateString() : "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-500">
+                            {ep.duration_display || "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {ep.has_transcript ? (
+                              <span className="text-green-600 font-medium">\u2713 {(ep.transcript_length / 1000).toFixed(0)}k chars</span>
+                            ) : (
+                              <span className="text-zinc-300">\u2014</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {episodesOnly.length > 100 && (
+                    <div className="border-t bg-zinc-50 px-3 py-2 text-center text-xs text-zinc-400">
+                      Showing 100 of {episodesOnly.length}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <span className="font-medium text-amber-600">
-                  {stats.total - stats.withTranscript}
-                </span>{" "}
-                <span className="text-zinc-400">missing</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </CollapsibleSection>
 
