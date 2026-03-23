@@ -93,7 +93,7 @@ export function WorkflowPanelInner({
   // Auto-poll: refresh every 10s when a job is active
   const [isPolling, setIsPolling] = useState(false);
   const [pollCount, setPollCount] = useState(0);
-  const [prevEpisodeCount, setPrevEpisodeCount] = useState(0);
+  const [prevFingerprint, setPrevFingerprint] = useState("");
   const [stableCount, setStableCount] = useState(0);
 
   // Tab state for episode list
@@ -123,10 +123,14 @@ export function WorkflowPanelInner({
       return;
     }
 
-    const currentCount = episodes.length;
+    // Build a fingerprint that changes when any episode data changes
+    const fingerprint = episodes.length + ":" + 
+      episodes.filter((e) => e.has_transcript).length + ":" +
+      episodes.filter((e) => e.processing_status === "completed").length + ":" +
+      episodes.filter((e) => e.processing_status === "failed").length;
     const hasProcessing = episodes.some((e) => e.processing_status === "processing");
 
-    if (currentCount === prevEpisodeCount && !hasProcessing && currentCount > 0) {
+    if (fingerprint === prevFingerprint && !hasProcessing && episodes.length > 0) {
       setStableCount((c) => c + 1);
       if (stableCount >= 3) {
         setIsPolling(false);
@@ -137,8 +141,8 @@ export function WorkflowPanelInner({
       setStableCount(0);
     }
 
-    setPrevEpisodeCount(currentCount);
-  }, [isPolling, pollCount, episodes, prevEpisodeCount, stableCount]);
+    setPrevFingerprint(fingerprint);
+  }, [isPolling, pollCount, episodes, prevFingerprint, stableCount]);
 
   // ─── Step 1: Discovery ───────────────────────────────────────
   const handleResolveChannel = async () => {
