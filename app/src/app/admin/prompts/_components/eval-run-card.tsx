@@ -64,7 +64,7 @@ export function EvalRunCard({
           </span>
         </div>
         <span className="text-xs text-zinc-400">
-          {new Date(run.created_at).toLocaleString()}
+          {run.created_at.slice(0, 16).replace("T", " ")}
         </span>
       </div>
 

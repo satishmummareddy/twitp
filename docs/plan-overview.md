@@ -25,6 +25,15 @@ Phase 4: Show Pages   Phase 5: Topic Pages
              │
              ▼
 Phase 6: Navigation & Polish (nav dropdowns, SEO, responsive)
+    │
+    ▼
+Phase 7: Scalable Job Queue Processing System
+    ├── 7A: Inngest Integration + Single-Pass Queue
+    ├── 7B: Two-Pass Processing Pipeline
+    ├── 7C: YouTube Discovery + Supadata Transcripts
+    ├── 7D: Show Processing Workflow UI
+    ├── 7E: Scheduled Processing (cron)
+    └── 7F: Enhanced Admin Dashboard
 ```
 
 ---
@@ -39,8 +48,9 @@ Phase 6: Navigation & Polish (nav dropdowns, SEO, responsive)
 | 4 | Show Pages | 1-2 | Phase 3 | [phase-4-show-pages.md](./plans/phase-4-show-pages.md) |
 | 5 | Topic Pages | 1-2 | Phase 3 | [phase-5-topic-pages.md](./plans/phase-5-topic-pages.md) |
 | 6 | Navigation & Polish | 2-3 | Phases 4-5 | [phase-6-navigation-polish.md](./plans/phase-6-navigation-polish.md) |
+| 7 | Scalable Job Queue Processing | 16-18 | Phase 2 | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
 
-**Total estimated: 12-19 sessions**
+**Total estimated: 28-37 sessions**
 
 ---
 
@@ -106,6 +116,17 @@ Phase 6: Navigation & Polish (nav dropdowns, SEO, responsive)
 - Footer
 - Performance optimization (image optimization, font loading)
 - Verify: Full user flow works end-to-end, Lighthouse score > 90
+
+### Phase 7: Scalable Job Queue Processing System
+*Scale from prototype to 10K+ episodes across 100+ shows.*
+
+- **7A: Inngest Integration** — Replace fire-and-forget with Inngest job queue, configurable concurrency
+- **7B: Two-Pass Pipeline** — Pass 1 (metadata from title+description, cheap model) + Pass 2 (insights from transcript, premium model)
+- **7C: YouTube + Supadata** — Discover episodes via YouTube API, fetch transcripts via Supadata API
+- **7D: Workflow UI** — 3-step per-show workflow: Discover → Test Run (5 eps) → Full Batch. Batch overview page + show detail page with collapsible sections
+- **7E: Scheduled Processing** — Inngest cron auto-discovers new episodes on configurable interval
+- **7F: Dashboard** — Processing stats, cost estimation, job history, retry controls
+- Verify: Process 10K+ episodes reliably with cost transparency
 
 ---
 

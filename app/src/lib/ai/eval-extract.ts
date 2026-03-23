@@ -13,9 +13,24 @@ interface EvalExtractionResult {
   durationMs: number;
 }
 
+const JSON_FORMAT_INSTRUCTIONS = `
+
+---
+**IMPORTANT: You MUST respond with ONLY a valid JSON object in this exact format, no markdown or other text:**
+
+{
+  "guest_name": "Guest Name or null",
+  "summary": "2-3 sentence summary of the episode",
+  "insights": ["insight 1", "insight 2", "insight 3", "insight 4", "insight 5"],
+  "topics": ["topic-slug-1", "topic-slug-2", "topic-slug-3"]
+}
+
+Return ONLY the raw JSON object, no markdown code blocks, no explanation.`;
+
 /**
  * Extract insights for eval purposes — does NOT mutate production data.
  * Reads transcript from the episodes table and returns parsed results.
+ * Automatically appends transcript and JSON format instructions if missing.
  */
 export async function extractForEval(
   episodeId: string,
@@ -39,11 +54,25 @@ export async function extractForEval(
     throw new Error(`Episode ${episodeId} has no transcript`);
   }
 
-  // Build the prompt
-  const prompt = promptConfig.template
+  // Build the prompt — replace placeholders if present,
+  // otherwise auto-append context so user doesn't need to include them manually
+  const hasTranscriptVar = promptConfig.template.includes("{transcript}");
+
+  let prompt = promptConfig.template
     .replace("{show_name}", showName)
     .replace("{episode_title}", episode.title || "Unknown")
     .replace("{transcript}", episode.transcript_text);
+
+  // If template didn't include {transcript}, auto-append the context
+  if (!hasTranscriptVar) {
+    prompt += `\n\n---\n**Show:** ${showName}\n**Episode Title:** ${episode.title || "Unknown"}\n\n**Transcript:**\n${episode.transcript_text}`;
+  }
+
+  // If template doesn't mention JSON output format, append instructions
+  const lowerPrompt = prompt.toLowerCase();
+  if (!lowerPrompt.includes("json")) {
+    prompt += JSON_FORMAT_INSTRUCTIONS;
+  }
 
   // Get API key
   const apiKey =

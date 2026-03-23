@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { isAdminAuthenticated } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PromptEvalPanel } from "./_components/prompt-eval-panel";
+import { PromptEvalLoader } from "./_components/prompt-eval-loader";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export default async function AdminPromptsPage() {
         Write prompts, run them against episodes, and compare results
         side-by-side
       </p>
-      <PromptEvalPanel initialShows={shows || []} />
+      <PromptEvalLoader initialShows={shows || []} />
     </div>
   );
 }

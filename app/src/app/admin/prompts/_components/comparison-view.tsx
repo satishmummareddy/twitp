@@ -154,7 +154,8 @@ function Column({
   label: string;
   sublabel?: string;
   summary: string | null;
-  insights: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  insights: any[];
   topics: string[];
   guestName: string | null;
   durationMs?: number | null;
@@ -207,7 +208,9 @@ function Column({
               <ol className="mt-1 list-decimal space-y-1 pl-4 text-sm">
                 {insights.map((insight, i) => (
                   <li key={i} className="leading-relaxed">
-                    {insight}
+                    {typeof insight === "string"
+                      ? insight
+                      : insight?.heading || insight?.summary || JSON.stringify(insight)}
                   </li>
                 ))}
               </ol>

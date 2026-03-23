@@ -158,19 +158,32 @@ export function PromptEvalPanel({ initialShows }: PromptEvalPanelProps) {
             disabled={
               runningEval || !selectedPrompt || selectedEpisodes.length === 0
             }
-            className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {runningEval ? "Running..." : "Run Eval"}
           </button>
-          {selectedPrompt && (
+          {selectedPrompt ? (
             <span className="text-sm text-zinc-500">
               Using: <strong>{selectedPrompt.name}</strong> (
               {selectedPrompt.model_provider}/{selectedPrompt.model_name})
             </span>
+          ) : (
+            <span className="text-sm text-amber-600">
+              ← Select a prompt above first
+            </span>
+          )}
+          {selectedPrompt && selectedEpisodes.length === 0 && (
+            <span className="text-sm text-amber-600">
+              ← Select episodes above
+            </span>
           )}
         </div>
 
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        {error && (
+          <div className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
       </section>
 
       {/* Section 3: Eval Run History */}
