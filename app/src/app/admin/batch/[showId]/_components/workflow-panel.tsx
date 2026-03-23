@@ -252,7 +252,11 @@ export function WorkflowPanelInner({
         title="Discovery"
         subtitle={
           stats.total > 0
-            ? `${stats.total} episodes discovered`
+            ? (() => {
+                const epCount = episodes.filter((e) => e.content_type !== "short").length;
+                const shortCount = episodes.filter((e) => e.content_type === "short").length;
+                return `${epCount} episodes, ${shortCount} shorts discovered`;
+              })()
             : "Fetch episode list from YouTube"
         }
         status={stats.total > 0 ? "complete" : "not-started"}
