@@ -126,13 +126,6 @@ export default async function EpisodeDetailPage({
         {episode.transcript_lang && <Pill label="Lang" value={episode.transcript_lang} color="zinc" />}
       </div>
 
-      {/* Summary */}
-      {episode.summary && (
-        <Section title="Summary">
-          <p className="text-sm leading-relaxed text-zinc-700">{episode.summary}</p>
-        </Section>
-      )}
-
       {/* Insights */}
       {insights && insights.length > 0 && (
         <Section title="Key Insights">
@@ -191,6 +184,13 @@ export default async function EpisodeDetailPage({
           <h2 className="mb-1 text-sm font-semibold text-red-700">Processing Error</h2>
           <pre className="whitespace-pre-wrap text-xs text-red-600">{episode.processing_error}</pre>
         </div>
+      )}
+
+      {/* Summary */}
+      {episode.summary && (
+        <Section title="Summary">
+          <p className="text-sm leading-relaxed text-zinc-700">{episode.summary}</p>
+        </Section>
       )}
 
       {/* Transcript */}

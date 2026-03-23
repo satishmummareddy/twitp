@@ -672,6 +672,80 @@ export function WorkflowPanelInner({
             </div>
           )}
 
+          {/* Episode AI processing status table */}
+          {episodes.length > 0 && (() => {
+            const episodesOnly = episodes.filter((e) => e.content_type !== "short");
+            return (
+              <div className="mt-2">
+                <div className="max-h-80 overflow-y-auto rounded border border-zinc-200">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 border-b bg-zinc-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Episode</th>
+                        <th className="px-3 py-2 text-left font-medium">Date</th>
+                        <th className="px-3 py-2 text-right font-medium">Duration</th>
+                        <th className="px-3 py-2 text-center font-medium">Transcript</th>
+                        <th className="px-3 py-2 text-center font-medium">AI Status</th>
+                        <th className="px-3 py-2 text-left font-medium">Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {episodesOnly.slice(0, 100).map((ep) => (
+                        <tr key={ep.id} className="hover:bg-zinc-50">
+                          <td className="max-w-xs truncate px-3 py-2" title={ep.title}>
+                            <a
+                              href={`/admin/transcript/${ep.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              {ep.title}
+                            </a>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                            {ep.published_at ? new Date(ep.published_at).toLocaleDateString() : "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-500">
+                            {ep.duration_display || "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {ep.has_transcript ? (
+                              <span className="text-green-600">{"\u2713"}</span>
+                            ) : (
+                              <span className="text-zinc-300">{"\u2014"}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <MiniStatus status={ep.processing_status} />
+                          </td>
+                          <td className="max-w-[200px] truncate px-3 py-2 text-zinc-500" title={ep.summary || ""}>
+                            {ep.summary ? (
+                              <a
+                                href={`/admin/transcript/${ep.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-zinc-600 hover:text-blue-600 hover:underline"
+                              >
+                                {ep.summary.length > 80 ? ep.summary.slice(0, 80) + "\u2026" : ep.summary}
+                              </a>
+                            ) : (
+                              <span className="text-zinc-300">{"\u2014"}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {episodesOnly.length > 100 && (
+                    <div className="border-t bg-zinc-50 px-3 py-2 text-center text-xs text-zinc-400">
+                      Showing 100 of {episodesOnly.length}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Failed episodes list */}
           {stats.failed > 0 && (
             <div className="mt-2">
