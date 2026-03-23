@@ -17,7 +17,7 @@ export async function GET(
   const { data: episodes, error } = await supabase
     .from("episodes")
     .select(
-      "id, title, slug, guest_name, published_at, duration_display, duration_seconds, view_count, like_count, thumbnail_url, youtube_url, processing_status, processing_error, transcript_text, summary, ai_model_used"
+      "id, title, slug, guest_name, published_at, duration_display, duration_seconds, view_count, like_count, thumbnail_url, youtube_url, processing_status, processing_error, transcript_text, summary, ai_model_used, content_type"
     )
     .eq("show_id", showId)
     .order("published_at", { ascending: false });

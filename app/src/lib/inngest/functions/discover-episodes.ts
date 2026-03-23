@@ -93,6 +93,7 @@ export const discoverEpisodes = inngest.createFunction(
               published_at: video.publishedAt,
               published_week: getWeekStart(video.publishedAt),
               youtube_tags: video.tags,
+              content_type: video.duration < 600 ? "short" : "episode",
             })
             .eq("id", existing.id);
           updated++;
@@ -113,6 +114,7 @@ export const discoverEpisodes = inngest.createFunction(
             published_week: getWeekStart(video.publishedAt),
             youtube_tags: video.tags,
             processing_status: "pending",
+            content_type: video.duration < 600 ? "short" : "episode",
           });
 
           if (error) {

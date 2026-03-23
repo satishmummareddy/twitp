@@ -20,6 +20,7 @@ interface Episode {
   transcript_length: number;
   summary: string | null;
   ai_model_used: string | null;
+  content_type: string | null;
 }
 
 interface Props {
@@ -306,7 +307,19 @@ export function WorkflowPanelInner({
                     {episodes.slice(0, 50).map((ep) => (
                       <tr key={ep.id} className="hover:bg-zinc-50">
                         <td className="max-w-xs truncate px-3 py-2" title={ep.title}>
-                          {ep.title}
+                          <span className="inline-flex items-center gap-1.5">
+                            {ep.title}
+                            {ep.content_type === "short" && (
+                              <span className="inline-block rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                                Short
+                              </span>
+                            )}
+                            {ep.content_type === "clip" && (
+                              <span className="inline-block rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+                                Clip
+                              </span>
+                            )}
+                          </span>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
                           {ep.published_at

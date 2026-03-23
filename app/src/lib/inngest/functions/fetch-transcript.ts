@@ -99,6 +99,7 @@ export const batchFetchTranscripts = inngest.createFunction(
         .from("episodes")
         .select("id, title, youtube_url, youtube_video_id")
         .eq("show_id", showId)
+        .eq("content_type", "episode")
         .or("transcript_text.is.null,transcript_text.eq.")
         .order("published_at", { ascending: false });
 

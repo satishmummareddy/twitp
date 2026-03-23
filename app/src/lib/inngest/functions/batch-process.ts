@@ -27,11 +27,12 @@ export const batchProcess = inngest.createFunction(
 
       if (!show) throw new Error(`Show not found: ${showId}`);
 
-      // Get episodes that need processing
+      // Get episodes that need processing (only full episodes, not shorts/clips)
       let query = supabase
         .from("episodes")
         .select("id, title, processing_status")
         .eq("show_id", showId)
+        .eq("content_type", "episode")
         .order("created_at", { ascending: true });
 
       if (!forceReprocess) {
