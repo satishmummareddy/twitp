@@ -76,12 +76,13 @@ export function WorkflowPanelInner({
 
       // Update stats from fetched data
       const eps = data.episodes || [];
+      const episodesOnly = eps.filter((e: Episode) => e.content_type !== "short");
       setStats({
         total: eps.length,
-        withTranscript: eps.filter((e: Episode) => e.has_transcript).length,
-        completed: eps.filter((e: Episode) => e.processing_status === "completed").length,
-        failed: eps.filter((e: Episode) => e.processing_status === "failed").length,
-        pending: eps.filter((e: Episode) => e.processing_status === "pending").length,
+        withTranscript: episodesOnly.filter((e: Episode) => e.has_transcript).length,
+        completed: episodesOnly.filter((e: Episode) => e.processing_status === "completed").length,
+        failed: episodesOnly.filter((e: Episode) => e.processing_status === "failed").length,
+        pending: episodesOnly.filter((e: Episode) => e.processing_status === "pending").length,
       });
     } catch {
       /* ignore */
@@ -413,7 +414,10 @@ export function WorkflowPanelInner({
         title="Fetch Transcripts"
         subtitle={
           stats.total > 0
-            ? `${stats.withTranscript} / ${stats.total} have transcripts`
+            ? (() => {
+                const epCount = episodes.filter((e) => e.content_type !== "short").length;
+                return `${stats.withTranscript} / ${epCount} episodes have transcripts`;
+              })()
             : "Discovery required first"
         }
         status={
@@ -431,12 +435,15 @@ export function WorkflowPanelInner({
         <div className="space-y-4">
           <p className="text-sm text-zinc-500">
             Fetch transcripts from YouTube via Supadata.
-            {stats.total - stats.withTranscript > 0 && (
-              <span className="font-medium text-amber-600">
-                {" "}
-                {stats.total - stats.withTranscript} episodes missing transcripts.
-              </span>
-            )}
+            {(() => {
+              const epCount = episodes.filter((e) => e.content_type !== "short").length;
+              const missing = epCount - stats.withTranscript;
+              return missing > 0 ? (
+                <span className="font-medium text-amber-600">
+                  {" "}{missing} episodes missing transcripts.
+                </span>
+              ) : null;
+            })()}
           </p>
 
           <div className="flex items-center gap-4">
