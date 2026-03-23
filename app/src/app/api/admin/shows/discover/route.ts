@@ -136,7 +136,7 @@ async function resolveToChannelId(
   try {
     const youtubeUrl = `https://www.youtube.com/@${handle}`;
     const res = await fetch(
-      `https://api.supadata.ai/v1/youtube/channel?url=${encodeURIComponent(youtubeUrl)}`,
+      `https://api.supadata.ai/v1/youtube/channel?id=${encodeURIComponent(youtubeUrl)}`,
       { headers: { "x-api-key": apiKey } }
     );
 
