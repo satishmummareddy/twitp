@@ -6,6 +6,8 @@ import {
   groupByWeek,
 } from "../../../_components/episode-card";
 
+export const dynamic = "force-dynamic";
+
 export default async function TopicPage({
   params,
 }: {
