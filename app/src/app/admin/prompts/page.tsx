@@ -1,19 +1,31 @@
 import { redirect } from "next/navigation";
 import { isAdminAuthenticated } from "@/lib/admin/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { PromptEvalPanel } from "./_components/prompt-eval-panel";
+
+export const dynamic = "force-dynamic";
 
 export default async function AdminPromptsPage() {
   const authenticated = await isAdminAuthenticated();
   if (!authenticated) redirect("/admin/login");
 
+  const supabase = createAdminClient();
+
+  // Fetch shows for the episode picker
+  const { data: shows } = await supabase
+    .from("shows")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name");
+
   return (
     <div>
-      <h1 className="text-2xl font-bold">Prompts</h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        Configure AI prompts for insights extraction
+      <h1 className="text-2xl font-bold">Prompt Eval Tool</h1>
+      <p className="mt-1 mb-6 text-sm text-zinc-500">
+        Write prompts, run them against episodes, and compare results
+        side-by-side
       </p>
-      <div className="mt-6 rounded-lg border border-zinc-200 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
-        Coming in Phase 2C
-      </div>
+      <PromptEvalPanel initialShows={shows || []} />
     </div>
   );
 }
