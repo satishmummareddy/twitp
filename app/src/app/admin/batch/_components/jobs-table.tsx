@@ -20,6 +20,23 @@ export function JobsTable({ showNames }: { showNames: Record<string, string> }) 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "running" | "completed" | "failed">("all");
+  const [cleaning, setCleaning] = useState(false);
+
+  const cleanupStale = async () => {
+    setCleaning(true);
+    try {
+      await fetch("/api/admin/inngest/cleanup", { method: "POST" });
+      await fetchJobs();
+    } catch { /* ignore */ }
+    setCleaning(false);
+  };
+
+  const isStale = (job: Job) => {
+    if (job.status !== "running") return false;
+    if (job.progress_current > 0) return false; // actively working
+    const age = Date.now() - new Date(job.created_at).getTime();
+    return age > 10 * 60 * 1000; // > 10 min with 0 progress
+  };
 
   const fetchJobs = async () => {
     try {
@@ -104,6 +121,15 @@ export function JobsTable({ showNames }: { showNames: Record<string, string> }) 
             </button>
           );
         })}
+        {jobs.some(isStale) && (
+          <button
+            onClick={cleanupStale}
+            disabled={cleaning}
+            className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50"
+          >
+            {cleaning ? "Cleaning..." : "Clean up stale jobs"}
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -133,7 +159,12 @@ export function JobsTable({ showNames }: { showNames: Record<string, string> }) 
                       {jobTypeLabel(job.job_type)}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">{statusBadge(job.status)}</td>
+                  <td className="px-4 py-2.5">
+                    {statusBadge(job.status)}
+                    {isStale(job) && (
+                      <span className="ml-1 text-xs text-amber-500" title="Job may be stale">⚠</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 tabular-nums">
                     {job.progress_total > 0 ? (
                       <div className="flex items-center gap-2">
