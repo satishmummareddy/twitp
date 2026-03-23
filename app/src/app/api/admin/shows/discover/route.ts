@@ -40,8 +40,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create a processing job to track discovery
+    // Save channelId to show if provided
     const supabase = createAdminClient();
+    if (channelId) {
+      await supabase
+        .from("shows")
+        .update({ youtube_channel_id: channelId })
+        .eq("id", showId);
+    }
+
+    // Create a processing job to track discovery
     const { data: job } = await supabase
       .from("processing_jobs")
       .insert({

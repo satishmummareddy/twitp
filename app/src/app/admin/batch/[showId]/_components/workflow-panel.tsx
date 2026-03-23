@@ -49,7 +49,10 @@ export function WorkflowPanelInner({
   const [stats, setStats] = useState(initialStats);
 
   // Discovery state
-  const [channelId, setChannelId] = useState(initialChannelId);
+  const [youtubeInput, setYoutubeInput] = useState(initialChannelId || "");
+  const [resolvedChannelId, setResolvedChannelId] = useState(initialChannelId);
+  const [resolvedChannelTitle, setResolvedChannelTitle] = useState("");
+  const [resolving, setResolving] = useState(false);
   const [playlistId, setPlaylistId] = useState(initialPlaylistId);
   const [discovering, setDiscovering] = useState(false);
   const [discoverResult, setDiscoverResult] = useState<string | null>(null);
@@ -90,7 +93,33 @@ export function WorkflowPanelInner({
   }, [fetchEpisodes]);
 
   // ─── Step 1: Discovery ───────────────────────────────────────
+  const handleResolveChannel = async () => {
+    if (!youtubeInput.trim()) return;
+    setResolving(true);
+    setDiscoverResult(null);
+    try {
+      const res = await fetch("/api/admin/shows/resolve-channel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: youtubeInput.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResolvedChannelId(data.channelId);
+        setResolvedChannelTitle(data.channelTitle || "");
+        setDiscoverResult(`Resolved: ${data.channelTitle || data.channelId} (${data.channelId})`);
+      } else {
+        setDiscoverResult(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setDiscoverResult(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+    setResolving(false);
+  };
+
   const handleDiscover = async () => {
+    const cId = resolvedChannelId || youtubeInput.trim();
+    if (!cId && !playlistId) return;
     setDiscovering(true);
     setDiscoverResult(null);
     try {
@@ -99,14 +128,13 @@ export function WorkflowPanelInner({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           showId,
-          channelId: channelId || undefined,
+          channelId: cId || undefined,
           playlistId: playlistId || undefined,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        setDiscoverResult(`Discovery started (Job: ${data.jobId}). Refresh in a minute to see episodes.`);
-        // Auto-refresh after 30s
+        setDiscoverResult(`Discovery started (Job: ${data.jobId}). Refreshing in 30s...`);
         setTimeout(fetchEpisodes, 30000);
       } else {
         setDiscoverResult(`Error: ${data.error}`);
@@ -185,37 +213,38 @@ export function WorkflowPanelInner({
         onToggle={() => toggleStep(1)}
       >
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-500">
-                YouTube Channel ID
-              </label>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-zinc-500">
+              YouTube Channel URL, Handle, or Channel ID
+            </label>
+            <div className="flex gap-2">
               <input
                 type="text"
-                value={channelId}
-                onChange={(e) => setChannelId(e.target.value)}
-                placeholder="UCxyz..."
-                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                value={youtubeInput}
+                onChange={(e) => setYoutubeInput(e.target.value)}
+                placeholder="https://www.youtube.com/@LennysPodcast or UCxyz..."
+                className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
               />
+              <button
+                onClick={handleResolveChannel}
+                disabled={resolving || !youtubeInput.trim()}
+                className="rounded bg-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-300 disabled:opacity-50"
+              >
+                {resolving ? "Resolving..." : "Resolve"}
+              </button>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-500">
-                YouTube Playlist ID (optional)
-              </label>
-              <input
-                type="text"
-                value={playlistId}
-                onChange={(e) => setPlaylistId(e.target.value)}
-                placeholder="PLxyz..."
-                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
-            </div>
+            {resolvedChannelId && (
+              <div className="mt-1 text-xs text-green-600">
+                ✓ Channel ID: {resolvedChannelId}
+                {resolvedChannelTitle && ` — ${resolvedChannelTitle}`}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={handleDiscover}
-              disabled={discovering || (!channelId && !playlistId)}
+              disabled={discovering || (!resolvedChannelId && !youtubeInput.trim() && !playlistId)}
               className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
               {discovering ? "Discovering..." : "Fetch Episodes"}
