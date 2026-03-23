@@ -91,6 +91,9 @@ export function WorkflowPanelInner({
 
   // Auto-poll: refresh every 10s when a job is active
   const [isPolling, setIsPolling] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
+  const [prevEpisodeCount, setPrevEpisodeCount] = useState(0);
+  const [stableCount, setStableCount] = useState(0);
 
   // Tab state for episode list
   const [activeTab, setActiveTab] = useState<"episodes" | "shorts">("episodes");
@@ -101,20 +104,40 @@ export function WorkflowPanelInner({
 
   useEffect(() => {
     if (!isPolling) return;
-    const interval = setInterval(fetchEpisodes, 10_000);
+    const interval = setInterval(() => {
+      fetchEpisodes();
+      setPollCount((c) => c + 1);
+    }, 10_000);
     return () => clearInterval(interval);
   }, [isPolling, fetchEpisodes]);
 
-  // Auto-stop polling when everything is done
+  // Auto-stop polling: stop after data stabilizes (3 consecutive no-change polls)
+  // or after 60 polls (10 minutes max)
   useEffect(() => {
-    if (isPolling && stats.pending === 0 && stats.total > 0) {
-      // Check if any processing is happening
-      const hasProcessing = episodes.some(e => e.processing_status === "processing");
-      if (!hasProcessing) {
-        setIsPolling(false);
-      }
+    if (!isPolling) return;
+
+    if (pollCount >= 60) {
+      setIsPolling(false);
+      setPollCount(0);
+      return;
     }
-  }, [isPolling, stats, episodes]);
+
+    const currentCount = episodes.length;
+    const hasProcessing = episodes.some((e) => e.processing_status === "processing");
+
+    if (currentCount === prevEpisodeCount && !hasProcessing && currentCount > 0) {
+      setStableCount((c) => c + 1);
+      if (stableCount >= 3) {
+        setIsPolling(false);
+        setPollCount(0);
+        setStableCount(0);
+      }
+    } else {
+      setStableCount(0);
+    }
+
+    setPrevEpisodeCount(currentCount);
+  }, [isPolling, pollCount, episodes, prevEpisodeCount, stableCount]);
 
   // ─── Step 1: Discovery ───────────────────────────────────────
   const handleResolveChannel = async () => {
