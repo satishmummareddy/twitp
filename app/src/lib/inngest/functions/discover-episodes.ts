@@ -1,14 +1,19 @@
 import { inngest } from "../client";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getChannelVideoIds } from "@/lib/supadata/client";
 import {
-  getAllChannelVideos,
-  getPlaylistVideos,
-  type YouTubeVideoMeta,
-} from "@/lib/supadata/client";
+  getAllVideosMetadata,
+  type YouTubeVideo,
+} from "@/lib/youtube/client";
 
 /**
- * Discover episodes from a YouTube channel or playlist.
- * Fetches video metadata and creates episode records in DB.
+ * Discover episodes from a YouTube channel.
+ *
+ * HYBRID approach:
+ *  1. Supadata getChannelVideoIds — 1 API call to get all video IDs
+ *  2. YouTube Data API getAllVideosMetadata — batches of 50 for full metadata
+ *
+ * For 300 videos: 1 Supadata call + 6 YouTube API calls (vs 300 Supadata calls).
  */
 export const discoverEpisodes = inngest.createFunction(
   {
@@ -17,7 +22,7 @@ export const discoverEpisodes = inngest.createFunction(
     triggers: [{ event: "show/discover.requested" }],
   },
   async ({ event, step }) => {
-    const { showId, channelId, playlistId, maxPages } = event.data;
+    const { showId, channelId } = event.data;
 
     // Step 1: Verify show exists
     const show = await step.run("verify-show", async () => {
@@ -32,35 +37,27 @@ export const discoverEpisodes = inngest.createFunction(
       return data;
     });
 
-    // Step 2: Fetch all videos from channel/playlist
-    const videos = await step.run("fetch-videos", async () => {
+    // Step 2: Fetch all video IDs from channel via Supadata (1 API call)
+    const videoIds: string[] = await step.run("fetch-video-ids", async () => {
       const sourceId = channelId || show.youtube_channel_id;
 
-      if (playlistId) {
-        // Fetch from playlist — paginate
-        const allVideos: YouTubeVideoMeta[] = [];
-        let pageToken: string | undefined;
-        let pages = 0;
-
-        do {
-          const result = await getPlaylistVideos(playlistId, { pageToken });
-          allVideos.push(...result.videos);
-          pageToken = result.nextPageToken;
-          pages++;
-          if (pageToken) await new Promise((r) => setTimeout(r, 500));
-        } while (pageToken && pages < (maxPages || 100));
-
-        return allVideos;
+      if (!sourceId) {
+        throw new Error("No channelId provided");
       }
 
-      if (sourceId) {
-        return getAllChannelVideos(sourceId, { maxPages: maxPages || 100 });
-      }
-
-      throw new Error("No channelId or playlistId provided");
+      const result = await getChannelVideoIds(sourceId);
+      return result.videoIds;
     });
 
-    // Step 3: Upsert episodes into database
+    // Step 3: Fetch metadata in batches of 50 via YouTube Data API
+    const videos: YouTubeVideo[] = await step.run(
+      "fetch-video-metadata",
+      async () => {
+        return getAllVideosMetadata(videoIds);
+      }
+    );
+
+    // Step 4: Upsert episodes into database
     const result = await step.run("upsert-episodes", async () => {
       const supabase = createAdminClient();
       let created = 0;
@@ -70,6 +67,7 @@ export const discoverEpisodes = inngest.createFunction(
       for (const video of videos) {
         const videoId = video.id;
         const slug = slugify(video.title);
+        const youtubeUrl = `https://www.youtube.com/watch?v=${video.id}`;
 
         // Check if episode already exists
         const { data: existing } = await supabase
@@ -87,14 +85,14 @@ export const discoverEpisodes = inngest.createFunction(
             .update({
               title: video.title,
               description: video.description,
-              youtube_url: video.url,
+              youtube_url: youtubeUrl,
               youtube_video_id: videoId,
               duration_seconds: video.duration,
-              duration_display: formatDuration(video.duration),
-              view_count: video.stats.views,
-              thumbnail_url: video.thumbnails.high || video.thumbnails.medium || video.thumbnails.default,
-              published_at: video.createdAt,
-              published_week: getWeekStart(video.createdAt),
+              duration_display: video.durationDisplay,
+              view_count: video.viewCount,
+              thumbnail_url: video.thumbnailUrl,
+              published_at: video.publishedAt,
+              published_week: getWeekStart(video.publishedAt),
               youtube_tags: video.tags,
             })
             .eq("id", existing.id);
@@ -106,20 +104,22 @@ export const discoverEpisodes = inngest.createFunction(
             title: video.title,
             slug,
             description: video.description,
-            youtube_url: video.url,
+            youtube_url: youtubeUrl,
             youtube_video_id: videoId,
             duration_seconds: video.duration,
-            duration_display: formatDuration(video.duration),
-            view_count: video.stats.views,
-            thumbnail_url: video.thumbnails.high || video.thumbnails.medium || video.thumbnails.default,
-            published_at: video.createdAt,
-            published_week: getWeekStart(video.createdAt),
+            duration_display: video.durationDisplay,
+            view_count: video.viewCount,
+            thumbnail_url: video.thumbnailUrl,
+            published_at: video.publishedAt,
+            published_week: getWeekStart(video.publishedAt),
             youtube_tags: video.tags,
             processing_status: "pending",
           });
 
           if (error) {
-            console.error(`Failed to insert episode "${video.title}": ${error.message}`);
+            console.error(
+              `Failed to insert episode "${video.title}": ${error.message}`
+            );
             skipped++;
           } else {
             created++;
@@ -148,7 +148,7 @@ export const discoverEpisodes = inngest.createFunction(
   }
 );
 
-// ─── Helpers ──────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------
 
 function slugify(text: string): string {
   return text
@@ -158,14 +158,6 @@ function slugify(text: string): string {
     .replace(/-+/g, "-")
     .trim()
     .slice(0, 200);
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m ${s}s`;
 }
 
 function getWeekStart(dateStr: string): string {

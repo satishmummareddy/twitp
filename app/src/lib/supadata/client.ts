@@ -12,14 +12,14 @@ function getApiKey(): string {
   return key;
 }
 
-function headers() {
+function apiHeaders() {
   return {
     "x-api-key": getApiKey(),
     "Content-Type": "application/json",
   };
 }
 
-// ─── Types ────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------
 
 export interface TranscriptChunk {
   text: string;
@@ -41,49 +41,45 @@ export interface TranscriptJobStatus {
   error?: string;
 }
 
-export interface YouTubeVideoMeta {
+/** Matches the actual Supadata /youtube/video response shape. */
+export interface SupadataVideo {
   id: string;
-  url: string;
   title: string;
   description: string;
-  thumbnails: {
-    default?: string;
-    medium?: string;
-    high?: string;
-    maxres?: string;
-  };
-  author: {
+  channel: {
+    id: string;
     name: string;
     url: string;
   };
-  stats: {
-    views: number;
-    likes: number;
-    comments: number;
-  };
-  duration: number; // seconds
   tags: string[];
-  createdAt: string; // ISO date
+  thumbnail: string;
+  uploadDate: string; // ISO date
+  viewCount: number;
+  likeCount: number;
+  isLive: boolean;
+  duration: number; // seconds
+  transcriptLanguages: string[];
 }
 
+/** Matches the actual Supadata /youtube/channel response shape. */
 export interface ChannelInfo {
   id: string;
-  title: string;
+  name: string;
   description: string;
-  thumbnails: Record<string, string>;
-  stats: {
-    subscribers: number;
-    videos: number;
-    views: number;
-  };
+  thumbnail: string;
+  subscribers: number;
+  videos: number;
+  views: number;
 }
 
-export interface ChannelVideosResult {
-  videos: YouTubeVideoMeta[];
-  nextPageToken?: string;
+/** Matches the actual Supadata /youtube/channel/videos response shape. */
+interface ChannelVideoIdsResult {
+  videoIds: string[];
+  shortIds: string[];
+  liveIds: string[];
 }
 
-// ─── Transcript Functions ─────────────────────────────────────
+// --- Transcript Functions -----------------------------------------
 
 /**
  * Fetch transcript for a YouTube video.
@@ -100,7 +96,7 @@ export async function getTranscript(
   if (options?.lang) params.set("lang", options.lang);
 
   const response = await fetch(`${BASE_URL}/transcript?${params}`, {
-    headers: headers(),
+    headers: apiHeaders(),
   });
 
   if (response.status === 200) {
@@ -112,7 +108,7 @@ export async function getTranscript(
   }
 
   if (response.status === 202) {
-    // Async job — poll for completion
+    // Async job -- poll for completion
     const { jobId } = await response.json();
     return pollTranscriptJob(jobId, options?.maxPollMs ?? 300_000); // 5min default
   }
@@ -135,7 +131,7 @@ async function pollTranscriptJob(
     await new Promise((r) => setTimeout(r, pollInterval));
 
     const response = await fetch(`${BASE_URL}/transcript/${jobId}`, {
-      headers: headers(),
+      headers: apiHeaders(),
     });
 
     if (!response.ok) {
@@ -160,17 +156,37 @@ async function pollTranscriptJob(
   throw new Error(`Supadata transcript job timed out after ${maxMs}ms`);
 }
 
-// ─── YouTube Discovery Functions ──────────────────────────────
+// --- YouTube Discovery Functions ----------------------------------
 
 /**
- * Get metadata for a single YouTube video.
+ * Get video IDs from a YouTube channel.
+ * Returns arrays of videoIds, shortIds, and liveIds.
+ */
+export async function getChannelVideoIds(
+  channelId: string
+): Promise<ChannelVideoIdsResult> {
+  const params = new URLSearchParams({ id: channelId });
+  const response = await fetch(`${BASE_URL}/youtube/channel/videos?${params}`, {
+    headers: apiHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supadata channel videos error (${response.status}): ${errorBody}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get metadata for a single YouTube video by ID.
  */
 export async function getVideoMetadata(
-  videoUrl: string
-): Promise<YouTubeVideoMeta> {
-  const params = new URLSearchParams({ url: videoUrl });
+  videoId: string
+): Promise<SupadataVideo> {
+  const params = new URLSearchParams({ id: videoId });
   const response = await fetch(`${BASE_URL}/youtube/video?${params}`, {
-    headers: headers(),
+    headers: apiHeaders(),
   });
 
   if (!response.ok) {
@@ -189,7 +205,7 @@ export async function getChannelInfo(
 ): Promise<ChannelInfo> {
   const params = new URLSearchParams({ id: channelId });
   const response = await fetch(`${BASE_URL}/youtube/channel?${params}`, {
-    headers: headers(),
+    headers: apiHeaders(),
   });
 
   if (!response.ok) {
@@ -201,77 +217,31 @@ export async function getChannelInfo(
 }
 
 /**
- * List videos from a YouTube channel with pagination.
- * Returns up to 50 videos per page.
+ * Discover all videos from a channel.
+ * First fetches video IDs, then fetches metadata for each.
+ * Use with caution on large channels -- one API call per video.
  */
-export async function getChannelVideos(
+export async function discoverChannelVideos(
   channelId: string,
-  options?: { pageToken?: string }
-): Promise<ChannelVideosResult> {
-  const params = new URLSearchParams({ id: channelId });
-  if (options?.pageToken) params.set("pageToken", options.pageToken);
+  options?: { onProgress?: (fetched: number, total: number) => void }
+): Promise<SupadataVideo[]> {
+  const { videoIds } = await getChannelVideoIds(channelId);
 
-  const response = await fetch(`${BASE_URL}/youtube/channel/videos?${params}`, {
-    headers: headers(),
-  });
+  const videos: SupadataVideo[] = [];
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Supadata channel videos error (${response.status}): ${errorBody}`);
-  }
-
-  return response.json();
-}
-
-/**
- * List videos from a YouTube playlist with pagination.
- */
-export async function getPlaylistVideos(
-  playlistId: string,
-  options?: { pageToken?: string }
-): Promise<ChannelVideosResult> {
-  const params = new URLSearchParams({ id: playlistId });
-  if (options?.pageToken) params.set("pageToken", options.pageToken);
-
-  const response = await fetch(`${BASE_URL}/youtube/playlist/videos?${params}`, {
-    headers: headers(),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Supadata playlist videos error (${response.status}): ${errorBody}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Get ALL videos from a channel, paginating through results.
- * Use with caution on large channels — costs 1 credit per page.
- */
-export async function getAllChannelVideos(
-  channelId: string,
-  options?: { maxPages?: number; onPage?: (videos: YouTubeVideoMeta[], page: number) => void }
-): Promise<YouTubeVideoMeta[]> {
-  const allVideos: YouTubeVideoMeta[] = [];
-  let pageToken: string | undefined;
-  let page = 0;
-  const maxPages = options?.maxPages ?? 100;
-
-  do {
-    const result = await getChannelVideos(channelId, { pageToken });
-    allVideos.push(...result.videos);
-    page++;
-
-    options?.onPage?.(result.videos, page);
-
-    pageToken = result.nextPageToken;
-
-    // Small delay between pages to be respectful
-    if (pageToken) {
-      await new Promise((r) => setTimeout(r, 500));
+  for (const id of videoIds) {
+    try {
+      const video = await getVideoMetadata(id);
+      videos.push(video);
+      options?.onProgress?.(videos.length, videoIds.length);
+    } catch (err) {
+      console.error(`Failed to fetch metadata for video ${id}:`, err);
+      // Continue with remaining videos
     }
-  } while (pageToken && page < maxPages);
 
-  return allVideos;
+    // Small delay between requests to be respectful
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  return videos;
 }
