@@ -8,7 +8,8 @@ export interface EpisodeData {
   summary: string | null;
   youtube_url: string | null;
   duration_display: string | null;
-  published_at: string;
+  published_at: string | null;
+  created_at?: string;
   shows: { name: string; slug: string };
   insights: { position: number; content: string }[];
 }
@@ -108,7 +109,7 @@ export function groupByWeek(
 ): Map<string, EpisodeData[]> {
   const groups = new Map<string, EpisodeData[]>();
   for (const ep of episodes) {
-    const label = getWeekLabel(ep.published_at);
+    const label = getWeekLabel(ep.published_at || ep.created_at || new Date().toISOString());
     const group = groups.get(label) ?? [];
     group.push(ep);
     groups.set(label, group);
@@ -118,6 +119,7 @@ export function groupByWeek(
 
 function getWeekLabel(dateStr: string): string {
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "Unknown Date";
   const now = new Date();
   const startOfWeek = new Date(date);
   startOfWeek.setDate(date.getDate() - date.getDay());
