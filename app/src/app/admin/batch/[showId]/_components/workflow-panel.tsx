@@ -529,7 +529,14 @@ export function WorkflowPanelInner({
                           </td>
                           <td className="px-3 py-2 text-center">
                             {ep.has_transcript ? (
-                              <span className="text-green-600 font-medium">\u2713 {(ep.transcript_length / 1000).toFixed(0)}k chars</span>
+                              <a
+                                href={`/admin/transcript/${ep.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-green-600 font-medium hover:underline"
+                              >
+                                \u2713 {(ep.transcript_length / 1000).toFixed(0)}k chars
+                              </a>
                             ) : (
                               <span className="text-zinc-300">\u2014</span>
                             )}
