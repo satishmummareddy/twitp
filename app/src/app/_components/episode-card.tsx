@@ -8,7 +8,7 @@ export interface EpisodeData {
   summary: string | null;
   youtube_url: string | null;
   duration_display: string | null;
-  created_at: string;
+  published_at: string;
   shows: { name: string; slug: string };
   insights: { position: number; content: string }[];
 }
@@ -108,7 +108,7 @@ export function groupByWeek(
 ): Map<string, EpisodeData[]> {
   const groups = new Map<string, EpisodeData[]>();
   for (const ep of episodes) {
-    const label = getWeekLabel(ep.created_at);
+    const label = getWeekLabel(ep.published_at);
     const group = groups.get(label) ?? [];
     group.push(ep);
     groups.set(label, group);

@@ -13,13 +13,13 @@ export default async function HomePage() {
   const { data: episodes } = await supabase
     .from("episodes")
     .select(
-      `id, title, slug, guest_name, summary, youtube_url, duration_display, created_at,
+      `id, title, slug, guest_name, summary, youtube_url, duration_display, published_at,
        shows(name, slug),
        insights(position, content)`
     )
     .eq("is_published", true)
     .eq("processing_status", "completed")
-    .order("created_at", { ascending: false })
+    .order("published_at", { ascending: false })
     .limit(50);
 
   if (!episodes || episodes.length === 0) {
