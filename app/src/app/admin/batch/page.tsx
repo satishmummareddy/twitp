@@ -2,6 +2,8 @@ import { isAdminAuthenticated } from "@/lib/admin/auth";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
+import { BatchTabs } from "./_components/batch-tabs";
+import { JobsTableLoader } from "./_components/jobs-table-loader";
 
 export const revalidate = 0;
 
@@ -85,74 +87,85 @@ export default async function BatchOverviewPage() {
         <StatCard label="Active Jobs" value={activeJobs} color="blue" />
       </div>
 
-      {/* Shows Table */}
-      <div className="overflow-hidden rounded-lg border border-zinc-200">
-        <table className="w-full text-sm">
-          <thead className="border-b border-zinc-200 bg-zinc-50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-zinc-600">Show</th>
-              <th className="px-4 py-3 text-left font-medium text-zinc-600">Status</th>
-              <th className="px-4 py-3 text-right font-medium text-zinc-600">Episodes</th>
-              <th className="px-4 py-3 text-right font-medium text-zinc-600">Processed</th>
-              <th className="px-4 py-3 text-right font-medium text-zinc-600">Failed</th>
-              <th className="px-4 py-3 text-right font-medium text-zinc-600">Pending</th>
-              <th className="px-4 py-3 text-left font-medium text-zinc-600">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {(shows || []).map((show) => {
-              const stats = showStats[show.id];
-              const hasRunningJob = runningJobs?.some((j) => j.show_id === show.id);
-              const status = getShowStatus(stats, hasRunningJob);
-
-              return (
-                <tr key={show.id} className="hover:bg-zinc-50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{show.name}</div>
-                    {show.youtube_channel_id && (
-                      <div className="text-xs text-zinc-400">
-                        Channel: {show.youtube_channel_id.slice(0, 16)}...
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={status} />
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{stats.total}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-green-600">
-                    {stats.completed}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-red-600">
-                    {stats.failed > 0 ? stats.failed : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-zinc-400">
-                    {stats.pending}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/admin/batch/${show.id}`}
-                      className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
-                    >
-                      Manage →
-                    </Link>
-                  </td>
+      {/* Tabs: Shows + All Jobs */}
+      <BatchTabs
+        showsContent={
+          <div className="overflow-hidden rounded-lg border border-zinc-200">
+            <table className="w-full text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-zinc-600">Show</th>
+                  <th className="px-4 py-3 text-left font-medium text-zinc-600">Status</th>
+                  <th className="px-4 py-3 text-right font-medium text-zinc-600">Episodes</th>
+                  <th className="px-4 py-3 text-right font-medium text-zinc-600">Processed</th>
+                  <th className="px-4 py-3 text-right font-medium text-zinc-600">Failed</th>
+                  <th className="px-4 py-3 text-right font-medium text-zinc-600">Pending</th>
+                  <th className="px-4 py-3 text-left font-medium text-zinc-600">Action</th>
                 </tr>
-              );
-            })}
-            {(!shows || shows.length === 0) && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-zinc-400">
-                  No shows yet.{" "}
-                  <Link href="/admin/shows" className="text-blue-600 underline">
-                    Add a show
-                  </Link>{" "}
-                  first.
-                </td>
-              </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {(shows || []).map((show) => {
+                  const stats = showStats[show.id];
+                  const hasRunningJob = runningJobs?.some((j) => j.show_id === show.id);
+                  const status = getShowStatus(stats, hasRunningJob);
+
+                  return (
+                    <tr key={show.id} className="hover:bg-zinc-50">
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{show.name}</div>
+                        {show.youtube_channel_id && (
+                          <div className="text-xs text-zinc-400">
+                            Channel: {show.youtube_channel_id.slice(0, 16)}...
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={status} />
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">{stats.total}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-green-600">
+                        {stats.completed}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-red-600">
+                        {stats.failed > 0 ? stats.failed : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-zinc-400">
+                        {stats.pending}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/admin/batch/${show.id}`}
+                          className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                        >
+                          Manage →
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(!shows || shows.length === 0) && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-zinc-400">
+                      No shows yet.{" "}
+                      <Link href="/admin/shows" className="text-blue-600 underline">
+                        Add a show
+                      </Link>{" "}
+                      first.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        }
+        jobsContent={
+          <JobsTableLoader
+            showNames={Object.fromEntries(
+              (shows || []).map((s) => [s.id, s.name])
             )}
-          </tbody>
-        </table>
-      </div>
+          />
+        }
+      />
     </div>
   );
 }
