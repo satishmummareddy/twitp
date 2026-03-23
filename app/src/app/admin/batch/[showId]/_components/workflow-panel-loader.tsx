@@ -17,6 +17,7 @@ export function WorkflowPanel(props: {
   playlistId: string;
   stats: {
     total: number;
+    episodeCount: number;
     withTranscript: number;
     completed: number;
     failed: number;

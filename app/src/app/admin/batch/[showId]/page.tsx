@@ -35,16 +35,23 @@ export default async function ShowProcessingPage({
     );
   }
 
-  // Get episode stats
-  const { count: totalEpisodes } = await supabase
+  // Get episode stats — all videos (for total) and episodes only (for workflow status)
+  const { count: totalAll } = await supabase
     .from("episodes")
     .select("id", { count: "exact", head: true })
     .eq("show_id", showId);
+
+  const { count: episodeCount } = await supabase
+    .from("episodes")
+    .select("id", { count: "exact", head: true })
+    .eq("show_id", showId)
+    .eq("content_type", "episode");
 
   const { count: withTranscript } = await supabase
     .from("episodes")
     .select("id", { count: "exact", head: true })
     .eq("show_id", showId)
+    .eq("content_type", "episode")
     .neq("transcript_text", "")
     .not("transcript_text", "is", null);
 
@@ -52,22 +59,26 @@ export default async function ShowProcessingPage({
     .from("episodes")
     .select("id", { count: "exact", head: true })
     .eq("show_id", showId)
+    .eq("content_type", "episode")
     .eq("processing_status", "completed");
 
   const { count: failed } = await supabase
     .from("episodes")
     .select("id", { count: "exact", head: true })
     .eq("show_id", showId)
+    .eq("content_type", "episode")
     .eq("processing_status", "failed");
 
   const { count: pending } = await supabase
     .from("episodes")
     .select("id", { count: "exact", head: true })
     .eq("show_id", showId)
+    .eq("content_type", "episode")
     .eq("processing_status", "pending");
 
   const stats = {
-    total: totalEpisodes || 0,
+    total: totalAll || 0,
+    episodeCount: episodeCount || 0,
     withTranscript: withTranscript || 0,
     completed: completed || 0,
     failed: failed || 0,
@@ -90,7 +101,7 @@ export default async function ShowProcessingPage({
 
       {/* Stats Bar */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <MiniStat label="Episodes" value={stats.total} />
+        <MiniStat label="Episodes" value={stats.episodeCount} />
         <MiniStat label="Transcripts" value={stats.withTranscript} color="blue" />
         <MiniStat label="Processed" value={stats.completed} color="green" />
         <MiniStat label="Failed" value={stats.failed} color="red" />

@@ -30,6 +30,7 @@ interface Props {
   playlistId: string;
   stats: {
     total: number;
+    episodeCount: number;
     withTranscript: number;
     completed: number;
     failed: number;
@@ -74,11 +75,12 @@ export function WorkflowPanelInner({
       const data = await res.json();
       setEpisodes(data.episodes || []);
 
-      // Update stats from fetched data
+      // Update stats from fetched data — use episode count (not shorts) for status comparisons
       const eps = data.episodes || [];
       const episodesOnly = eps.filter((e: Episode) => e.content_type !== "short");
       setStats({
         total: eps.length,
+        episodeCount: episodesOnly.length,
         withTranscript: episodesOnly.filter((e: Episode) => e.has_transcript).length,
         completed: episodesOnly.filter((e: Episode) => e.processing_status === "completed").length,
         failed: episodesOnly.filter((e: Episode) => e.processing_status === "failed").length,
@@ -425,9 +427,9 @@ export function WorkflowPanelInner({
             : "Discovery required first"
         }
         status={
-          stats.total === 0
+          stats.episodeCount === 0
             ? "blocked"
-            : stats.withTranscript === stats.total
+            : stats.withTranscript >= stats.episodeCount
               ? "complete"
               : stats.withTranscript > 0
                 ? "partial"
@@ -440,7 +442,7 @@ export function WorkflowPanelInner({
           <p className="text-sm text-zinc-500">
             Fetch transcripts from YouTube via Supadata.
             {(() => {
-              const epCount = episodes.filter((e) => e.content_type !== "short").length;
+              const epCount = stats.episodeCount;
               const missing = epCount - stats.withTranscript;
               return missing > 0 ? (
                 <span className="font-medium text-amber-600">
@@ -562,14 +564,14 @@ export function WorkflowPanelInner({
         step={3}
         title="AI Processing"
         subtitle={
-          stats.total === 0
+          stats.episodeCount === 0
             ? "Discovery required first"
-            : `${stats.completed} / ${stats.total} processed`
+            : `${stats.completed} / ${stats.episodeCount} episodes processed`
         }
         status={
-          stats.total === 0
+          stats.episodeCount === 0
             ? "blocked"
-            : stats.completed === stats.total
+            : stats.completed >= stats.episodeCount
               ? "complete"
               : stats.completed > 0
                 ? "partial"
