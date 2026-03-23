@@ -1,0 +1,601 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+
+interface Episode {
+  id: string;
+  title: string;
+  slug: string;
+  guest_name: string | null;
+  published_at: string | null;
+  duration_display: string | null;
+  duration_seconds: number | null;
+  view_count: number | null;
+  like_count: number | null;
+  thumbnail_url: string | null;
+  youtube_url: string | null;
+  processing_status: string;
+  processing_error: string | null;
+  has_transcript: boolean;
+  transcript_length: number;
+  summary: string | null;
+  ai_model_used: string | null;
+}
+
+interface Props {
+  showId: string;
+  showName: string;
+  channelId: string;
+  playlistId: string;
+  stats: {
+    total: number;
+    withTranscript: number;
+    completed: number;
+    failed: number;
+    pending: number;
+  };
+}
+
+export function WorkflowPanelInner({
+  showId,
+  showName,
+  channelId: initialChannelId,
+  playlistId: initialPlaylistId,
+  stats: initialStats,
+}: Props) {
+  const [openStep, setOpenStep] = useState<number | null>(null);
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState(initialStats);
+
+  // Discovery state
+  const [channelId, setChannelId] = useState(initialChannelId);
+  const [playlistId, setPlaylistId] = useState(initialPlaylistId);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverResult, setDiscoverResult] = useState<string | null>(null);
+
+  // Transcript state
+  const [fetchingTranscripts, setFetchingTranscripts] = useState(false);
+  const [transcriptLimit, setTranscriptLimit] = useState(5);
+
+  // Processing state
+  const [processing, setProcessing] = useState(false);
+  const [processLimit, setProcessLimit] = useState(5);
+  const [forceReprocess, setForceReprocess] = useState(false);
+
+  const fetchEpisodes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/shows/${showId}/episodes`);
+      const data = await res.json();
+      setEpisodes(data.episodes || []);
+
+      // Update stats from fetched data
+      const eps = data.episodes || [];
+      setStats({
+        total: eps.length,
+        withTranscript: eps.filter((e: Episode) => e.has_transcript).length,
+        completed: eps.filter((e: Episode) => e.processing_status === "completed").length,
+        failed: eps.filter((e: Episode) => e.processing_status === "failed").length,
+        pending: eps.filter((e: Episode) => e.processing_status === "pending").length,
+      });
+    } catch {
+      /* ignore */
+    }
+    setLoading(false);
+  }, [showId]);
+
+  useEffect(() => {
+    fetchEpisodes();
+  }, [fetchEpisodes]);
+
+  // ─── Step 1: Discovery ───────────────────────────────────────
+  const handleDiscover = async () => {
+    setDiscovering(true);
+    setDiscoverResult(null);
+    try {
+      const res = await fetch("/api/admin/shows/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          showId,
+          channelId: channelId || undefined,
+          playlistId: playlistId || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDiscoverResult(`Discovery started (Job: ${data.jobId}). Refresh in a minute to see episodes.`);
+        // Auto-refresh after 30s
+        setTimeout(fetchEpisodes, 30000);
+      } else {
+        setDiscoverResult(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setDiscoverResult(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+    setDiscovering(false);
+  };
+
+  // ─── Step 2: Fetch Transcripts ───────────────────────────────
+  const handleFetchTranscripts = async (limit?: number) => {
+    setFetchingTranscripts(true);
+    try {
+      const res = await fetch("/api/admin/shows/transcripts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showId, limit: limit || 0 }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Transcript fetching started (Job: ${data.jobId})`);
+        setTimeout(fetchEpisodes, 60000);
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+    setFetchingTranscripts(false);
+  };
+
+  // ─── Step 3: Process (AI Extraction) ─────────────────────────
+  const handleProcess = async (limit?: number) => {
+    setProcessing(true);
+    try {
+      const res = await fetch("/api/admin/inngest/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          showId,
+          limit: limit || 0,
+          forceReprocess,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Processing started (Job: ${data.jobId})`);
+        setTimeout(fetchEpisodes, 60000);
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+    setProcessing(false);
+  };
+
+  const toggleStep = (step: number) => {
+    setOpenStep(openStep === step ? null : step);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* ─── Step 1: Discovery ────────────────────────────── */}
+      <CollapsibleSection
+        step={1}
+        title="Discovery"
+        subtitle={
+          stats.total > 0
+            ? `${stats.total} episodes discovered`
+            : "Fetch episode list from YouTube"
+        }
+        status={stats.total > 0 ? "complete" : "not-started"}
+        isOpen={openStep === 1}
+        onToggle={() => toggleStep(1)}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                YouTube Channel ID
+              </label>
+              <input
+                type="text"
+                value={channelId}
+                onChange={(e) => setChannelId(e.target.value)}
+                placeholder="UCxyz..."
+                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                YouTube Playlist ID (optional)
+              </label>
+              <input
+                type="text"
+                value={playlistId}
+                onChange={(e) => setPlaylistId(e.target.value)}
+                placeholder="PLxyz..."
+                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleDiscover}
+              disabled={discovering || (!channelId && !playlistId)}
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {discovering ? "Discovering..." : "Fetch Episodes"}
+            </button>
+            <button
+              onClick={fetchEpisodes}
+              disabled={loading}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+
+          {discoverResult && (
+            <p className={`text-sm ${discoverResult.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+              {discoverResult}
+            </p>
+          )}
+
+          {/* Episode List Preview */}
+          {episodes.length > 0 && (
+            <div className="mt-4">
+              <div className="mb-2 text-xs font-medium text-zinc-500">
+                {episodes.length} episodes found
+              </div>
+              <div className="max-h-80 overflow-y-auto rounded border border-zinc-200">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 border-b bg-zinc-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Title</th>
+                      <th className="px-3 py-2 text-left font-medium">Date</th>
+                      <th className="px-3 py-2 text-right font-medium">Duration</th>
+                      <th className="px-3 py-2 text-right font-medium">Views</th>
+                      <th className="px-3 py-2 text-center font-medium">Transcript</th>
+                      <th className="px-3 py-2 text-center font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {episodes.slice(0, 50).map((ep) => (
+                      <tr key={ep.id} className="hover:bg-zinc-50">
+                        <td className="max-w-xs truncate px-3 py-2" title={ep.title}>
+                          {ep.title}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                          {ep.published_at
+                            ? new Date(ep.published_at).toLocaleDateString()
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500">
+                          {ep.duration_display || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500">
+                          {ep.view_count?.toLocaleString() || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {ep.has_transcript ? (
+                            <span className="text-green-600">✓</span>
+                          ) : (
+                            <span className="text-zinc-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <MiniStatus status={ep.processing_status} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {episodes.length > 50 && (
+                  <div className="border-t bg-zinc-50 px-3 py-2 text-center text-xs text-zinc-400">
+                    Showing 50 of {episodes.length} episodes
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
+
+      {/* ─── Step 2: Fetch Transcripts ────────────────────── */}
+      <CollapsibleSection
+        step={2}
+        title="Fetch Transcripts"
+        subtitle={
+          stats.total > 0
+            ? `${stats.withTranscript} / ${stats.total} have transcripts`
+            : "Discovery required first"
+        }
+        status={
+          stats.total === 0
+            ? "blocked"
+            : stats.withTranscript === stats.total
+              ? "complete"
+              : stats.withTranscript > 0
+                ? "partial"
+                : "not-started"
+        }
+        isOpen={openStep === 2}
+        onToggle={() => toggleStep(2)}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-500">
+            Fetch transcripts from YouTube via Supadata.
+            {stats.total - stats.withTranscript > 0 && (
+              <span className="font-medium text-amber-600">
+                {" "}
+                {stats.total - stats.withTranscript} episodes missing transcripts.
+              </span>
+            )}
+          </p>
+
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                Limit (0 = all)
+              </label>
+              <input
+                type="number"
+                value={transcriptLimit}
+                onChange={(e) => setTranscriptLimit(Number(e.target.value))}
+                min={0}
+                className="w-24 rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="pt-5">
+              <button
+                onClick={() => handleFetchTranscripts(transcriptLimit)}
+                disabled={fetchingTranscripts || stats.total === 0}
+                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {fetchingTranscripts
+                  ? "Starting..."
+                  : transcriptLimit > 0
+                    ? `Fetch ${transcriptLimit} Transcripts`
+                    : "Fetch All Transcripts"}
+              </button>
+            </div>
+
+            <div className="pt-5">
+              <button
+                onClick={fetchEpisodes}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Transcript status breakdown */}
+          {episodes.length > 0 && (
+            <div className="flex gap-6 text-sm">
+              <div>
+                <span className="font-medium text-green-600">{stats.withTranscript}</span>{" "}
+                <span className="text-zinc-400">have transcripts</span>
+              </div>
+              <div>
+                <span className="font-medium text-amber-600">
+                  {stats.total - stats.withTranscript}
+                </span>{" "}
+                <span className="text-zinc-400">missing</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
+
+      {/* ─── Step 3: AI Processing ────────────────────────── */}
+      <CollapsibleSection
+        step={3}
+        title="AI Processing"
+        subtitle={
+          stats.total === 0
+            ? "Discovery required first"
+            : `${stats.completed} / ${stats.total} processed`
+        }
+        status={
+          stats.total === 0
+            ? "blocked"
+            : stats.completed === stats.total
+              ? "complete"
+              : stats.completed > 0
+                ? "partial"
+                : "not-started"
+        }
+        isOpen={openStep === 3}
+        onToggle={() => toggleStep(3)}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-500">
+            Run AI insights extraction on episodes with transcripts.
+            {stats.withTranscript === 0 && (
+              <span className="font-medium text-amber-600">
+                {" "}No transcripts available — complete Step 2 first.
+              </span>
+            )}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                Limit (0 = all)
+              </label>
+              <input
+                type="number"
+                value={processLimit}
+                onChange={(e) => setProcessLimit(Number(e.target.value))}
+                min={0}
+                className="w-24 rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="pt-5">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={forceReprocess}
+                  onChange={(e) => setForceReprocess(e.target.checked)}
+                  className="rounded border-zinc-300"
+                />
+                Force reprocess completed
+              </label>
+            </div>
+
+            <div className="pt-5">
+              <button
+                onClick={() => handleProcess(processLimit)}
+                disabled={processing || stats.withTranscript === 0}
+                className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
+              >
+                {processing
+                  ? "Starting..."
+                  : processLimit > 0
+                    ? `Process ${processLimit} Episodes`
+                    : "Process All Episodes"}
+              </button>
+            </div>
+
+            {stats.failed > 0 && (
+              <div className="pt-5">
+                <button
+                  onClick={async () => {
+                    const res = await fetch("/api/admin/inngest/retry", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ jobId: null, episodeIds: episodes.filter(e => e.processing_status === "failed").map(e => e.id) }),
+                    });
+                    const data = await res.json();
+                    alert(res.ok ? `Retrying ${data.retrying} episodes` : `Error: ${data.error}`);
+                  }}
+                  className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
+                >
+                  Retry {stats.failed} Failed
+                </button>
+              </div>
+            )}
+
+            <div className="pt-5">
+              <button onClick={fetchEpisodes} className="text-sm text-blue-600 hover:underline">
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Processing status breakdown */}
+          {episodes.length > 0 && (
+            <div className="flex gap-6 text-sm">
+              <div>
+                <span className="font-medium text-green-600">{stats.completed}</span>{" "}
+                <span className="text-zinc-400">completed</span>
+              </div>
+              <div>
+                <span className="font-medium text-amber-600">{stats.pending}</span>{" "}
+                <span className="text-zinc-400">pending</span>
+              </div>
+              <div>
+                <span className="font-medium text-red-600">{stats.failed}</span>{" "}
+                <span className="text-zinc-400">failed</span>
+              </div>
+            </div>
+          )}
+
+          {/* Failed episodes list */}
+          {stats.failed > 0 && (
+            <div className="mt-2">
+              <div className="mb-1 text-xs font-medium text-red-600">Failed Episodes:</div>
+              <div className="max-h-40 overflow-y-auto rounded border border-red-200 bg-red-50">
+                {episodes
+                  .filter((e) => e.processing_status === "failed")
+                  .map((ep) => (
+                    <div key={ep.id} className="border-b border-red-100 px-3 py-2 text-xs last:border-0">
+                      <div className="font-medium">{ep.title}</div>
+                      <div className="mt-0.5 text-red-500">{ep.processing_error || "Unknown error"}</div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+// ─── Reusable Components ────────────────────────────────────────
+
+function CollapsibleSection({
+  step,
+  title,
+  subtitle,
+  status,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  step: number;
+  title: string;
+  subtitle: string;
+  status: "not-started" | "partial" | "complete" | "blocked";
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const statusColors = {
+    "not-started": "border-zinc-200 bg-white",
+    partial: "border-amber-200 bg-amber-50/30",
+    complete: "border-green-200 bg-green-50/30",
+    blocked: "border-zinc-200 bg-zinc-50",
+  };
+
+  const statusIcons = {
+    "not-started": "○",
+    partial: "◐",
+    complete: "●",
+    blocked: "⊘",
+  };
+
+  const iconColors = {
+    "not-started": "text-zinc-400",
+    partial: "text-amber-500",
+    complete: "text-green-500",
+    blocked: "text-zinc-300",
+  };
+
+  return (
+    <div className={`rounded-lg border ${statusColors[status]}`}>
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-4 py-4 text-left"
+      >
+        <span className={`text-lg ${iconColors[status]}`}>{statusIcons[status]}</span>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+              Step {step}
+            </span>
+            <span className="font-semibold">{title}</span>
+          </div>
+          <div className="text-sm text-zinc-500">{subtitle}</div>
+        </div>
+        <span className="text-zinc-400">{isOpen ? "▼" : "▶"}</span>
+      </button>
+      {isOpen && <div className="border-t border-zinc-200 px-4 py-4">{children}</div>}
+    </div>
+  );
+}
+
+function MiniStatus({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    pending: "bg-zinc-100 text-zinc-500",
+    processing: "bg-blue-100 text-blue-600",
+    completed: "bg-green-100 text-green-600",
+    failed: "bg-red-100 text-red-600",
+  };
+
+  return (
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${styles[status] || styles.pending}`}
+    >
+      {status}
+    </span>
+  );
+}

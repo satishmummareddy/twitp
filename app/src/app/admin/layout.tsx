@@ -27,8 +27,9 @@ export default async function AdminLayout({
           <nav className="space-y-1">
             <NavLink href="/admin">Dashboard</NavLink>
             <NavLink href="/admin/shows">Shows</NavLink>
-            <NavLink href="/admin/prompts">Prompts</NavLink>
-            <NavLink href="/admin/processing">Processing</NavLink>
+            <NavLink href="/admin/batch">Batch Processing</NavLink>
+            <NavLink href="/admin/prompts">Prompts & Eval</NavLink>
+            <NavLink href="/admin/processing">Processing (Legacy)</NavLink>
           </nav>
           <div className="mt-8 border-t border-zinc-200 pt-4 dark:border-zinc-700">
             <Link
