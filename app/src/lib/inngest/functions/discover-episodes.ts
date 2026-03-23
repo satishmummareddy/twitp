@@ -1,7 +1,7 @@
 import { inngest } from "../client";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getChannelVideoIds } from "@/lib/supadata/client";
 import {
+  getAllChannelVideoIds,
   getAllVideosMetadata,
   type YouTubeVideo,
 } from "@/lib/youtube/client";
@@ -9,11 +9,11 @@ import {
 /**
  * Discover episodes from a YouTube channel.
  *
- * HYBRID approach:
- *  1. Supadata getChannelVideoIds — 1 API call to get all video IDs
- *  2. YouTube Data API getAllVideosMetadata — batches of 50 for full metadata
+ * 100% YouTube Data API approach:
+ *  1. playlistItems.list — paginate the channel's uploads playlist for ALL video IDs
+ *  2. videos.list — batches of 50 for full metadata (duration, views, etc.)
  *
- * For 300 videos: 1 Supadata call + 6 YouTube API calls (vs 300 Supadata calls).
+ * Supadata is only used for transcripts, not discovery.
  */
 export const discoverEpisodes = inngest.createFunction(
   {
@@ -37,7 +37,7 @@ export const discoverEpisodes = inngest.createFunction(
       return data;
     });
 
-    // Step 2: Fetch all video IDs from channel via Supadata (1 API call)
+    // Step 2: Fetch ALL video IDs from channel via YouTube uploads playlist
     const videoIds: string[] = await step.run("fetch-video-ids", async () => {
       const sourceId = channelId || show.youtube_channel_id;
 
@@ -45,8 +45,7 @@ export const discoverEpisodes = inngest.createFunction(
         throw new Error("No channelId provided");
       }
 
-      const result = await getChannelVideoIds(sourceId);
-      return result.videoIds;
+      return getAllChannelVideoIds(sourceId);
     });
 
     // Step 3: Fetch metadata in batches of 50 via YouTube Data API

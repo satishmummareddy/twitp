@@ -159,6 +159,24 @@ function mapVideoResource(item: YouTubeApiVideoResource): YouTubeVideo {
   };
 }
 
+// --- Types for playlistItems --------------------------------------
+
+interface YouTubeApiPlaylistItemResource {
+  snippet: {
+    resourceId: {
+      videoId: string;
+    };
+    title: string;
+    publishedAt: string;
+  };
+}
+
+interface YouTubeApiPlaylistItemsResponse {
+  items: YouTubeApiPlaylistItemResource[];
+  nextPageToken?: string;
+  pageInfo: { totalResults: number; resultsPerPage: number };
+}
+
 // --- API Functions ------------------------------------------------
 
 /**
@@ -223,6 +241,66 @@ export async function getAllVideosMetadata(
   }
 
   return results;
+}
+
+/**
+ * Get ALL video IDs from a YouTube channel by paginating the uploads playlist.
+ *
+ * Every YouTube channel has an "uploads" playlist whose ID is the channel ID
+ * with the "UC" prefix replaced by "UU".
+ * Uses playlistItems.list with pagination (50 per page) to retrieve every video.
+ */
+export async function getAllChannelVideoIds(
+  channelId: string
+): Promise<string[]> {
+  // Convert channel ID (UC...) to uploads playlist ID (UU...)
+  if (!channelId.startsWith("UC")) {
+    throw new Error(
+      `Expected a channel ID starting with "UC", got: ${channelId}`
+    );
+  }
+  const uploadsPlaylistId = "UU" + channelId.slice(2);
+
+  const videoIds: string[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      part: "snippet,contentDetails",
+      playlistId: uploadsPlaylistId,
+      maxResults: "50",
+      key: getApiKey(),
+    });
+    if (pageToken) {
+      params.set("pageToken", pageToken);
+    }
+
+    const response = await fetch(
+      `${YOUTUBE_API_BASE}/playlistItems?${params}`
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `YouTube Data API playlistItems.list error (${response.status}): ${errorBody}`
+      );
+    }
+
+    const data: YouTubeApiPlaylistItemsResponse = await response.json();
+
+    for (const item of data.items) {
+      videoIds.push(item.snippet.resourceId.videoId);
+    }
+
+    pageToken = data.nextPageToken;
+
+    // Small delay between pages to stay within rate limits
+    if (pageToken) {
+      await new Promise((r) => setTimeout(r, DELAY_BETWEEN_BATCHES_MS));
+    }
+  } while (pageToken);
+
+  return videoIds;
 }
 
 /**
