@@ -1,6 +1,6 @@
 # Phase 3: Home Page
 
-**Status:** Planned
+**Status:** Complete
 **Dependencies:** Phase 2 complete (episodes + insights populated in DB)
 **Estimated Effort:** 2-3 sessions (across 2 implementation steps)
 **Product Spec Reference:** Section 4 — "Visitor Browses Weekly Episodes", Section 5 — Home page
@@ -30,7 +30,9 @@ This is the first public-facing page. It's the primary entry point for visitors 
 
 **Why now:** Phase 2 populated the database with episode insights. Now we render them.
 
-**Target:** A responsive home page showing episodes grouped by week (most recent first). Each episode card displays show name, guest, title, date, duration, 5 insights, and topic tags. Pages load fast via ISR.
+**Target:** A responsive home page showing episodes grouped by week (most recent first). Each episode card displays show name, guest, title, date, duration, 5 insights, and topic tags.
+
+**What was actually built:** Hybrid SSR + client rendering. The first batch of episodes is server-rendered for SEO, then an `EpisodeList` client component uses `IntersectionObserver` to implement infinite scroll, fetching subsequent pages from `/api/public/episodes` with cursor-based pagination (30 episodes per page).
 
 ---
 
@@ -91,8 +93,9 @@ This is the first public-facing page. It's the primary entry point for visitors 
 
 | Decision | Choice | Why |
 |----------|--------|-----|
-| **Rendering** | Server Component + ISR (revalidate: 3600) | SEO-friendly, fast loads, fresh enough for weekly content |
-| **Pagination** | Load More button (not infinite scroll) | Simpler, better for SEO, user controls content loading |
+| **Rendering** | Hybrid SSR + client rendering | SSR first batch for SEO and fast initial load; client-side infinite scroll for subsequent pages |
+| **Pagination** | Infinite scroll with cursor-based pagination (30 episodes/page) | Smooth UX, automatic loading via `IntersectionObserver` in `EpisodeList` client component |
+| **API** | `/api/public/episodes` with cursor-based pagination | Cursor (last `published_at` timestamp) avoids offset drift; returns `nextCursor` for next page |
 | **Week grouping** | Computed from `published_week` column | Pre-computed in Phase 2, no runtime calculation needed |
 | **Episode card** | Shared component | Reused in Phases 4 (shows) and 5 (topics) |
 | **Topic tags** | Clickable badges linking to /topics/[slug] | Cross-navigation without dedicated topic page yet |
@@ -109,8 +112,8 @@ This is the first public-facing page. It's the primary entry point for visitors 
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `page` | number | 1 | Page number |
-| `limit` | number | 20 | Episodes per page |
+| `cursor` | string | - | Cursor for pagination (ISO timestamp of last episode's `published_at`) |
+| `limit` | number | 30 | Episodes per page |
 | `show` | string | - | Filter by show slug |
 | `topic` | string | - | Filter by topic slug |
 | `week` | string | - | Filter by specific week (YYYY-MM-DD) |
@@ -154,10 +157,11 @@ This is the first public-facing page. It's the primary entry point for visitors 
 - `WeekGroup` component:
   - Week header ("Week of March 16, 2026")
   - Contains list of EpisodeCards
-- `EpisodeList` component:
-  - Takes episodes array, groups by `published_week`
+- `EpisodeList` client component:
+  - Takes initial SSR episodes array, groups by `published_week`
   - Renders WeekGroups in order
-  - "Load More" button at bottom
+  - Uses `IntersectionObserver` to trigger infinite scroll loading
+  - Fetches subsequent pages from `/api/public/episodes` with cursor-based pagination
 - `TopicBadge` component:
   - Small tag/chip with topic name
   - Links to `/topics/[slug]`
@@ -177,9 +181,9 @@ This is the first public-facing page. It's the primary entry point for visitors 
 - Home page (`/app/page.tsx`):
   - Server Component fetching initial episodes
   - Hero section with site title and tagline
-  - EpisodeList with first ~4 weeks of episodes
-  - "Load More" button (client component) fetching via API
-  - ISR with `revalidate = 3600` (1 hour)
+  - EpisodeList with SSR first batch of episodes (30 episodes)
+  - Infinite scroll via `IntersectionObserver` fetching subsequent pages from `/api/public/episodes`
+  - Hybrid SSR + client rendering (no ISR; force-dynamic for SSR portion)
 - Public layout updates:
   - Basic page wrapper (header placeholder, main content area)
   - Meta tags (title, description, OG)

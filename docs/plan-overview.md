@@ -44,7 +44,7 @@ Phase 7: Scalable Job Queue Processing System
 |-------|---------|--------|-------|----------|
 | 1 | Project Setup & Data Model | ✅ Complete | Plus audit/cost columns added later | [phase-1-project-setup.md](./plans/phase-1-project-setup.md) |
 | 2 | Bulk Insights Extraction | ✅ Complete | Plus eval system added later | [phase-2-insights-extraction.md](./plans/phase-2-insights-extraction.md) |
-| 3 | Home Page | ✅ Complete | No pagination yet | [phase-3-home-page.md](./plans/phase-3-home-page.md) |
+| 3 | Home Page | ✅ Complete | Infinite scroll with cursor-based pagination (30 episodes/page), hybrid SSR + client rendering | [phase-3-home-page.md](./plans/phase-3-home-page.md) |
 | 4 | Show Pages | ✅ Complete | | [phase-4-show-pages.md](./plans/phase-4-show-pages.md) |
 | 5 | Topic Pages | ✅ Complete | | [phase-5-topic-pages.md](./plans/phase-5-topic-pages.md) |
 | 6 | Navigation & Polish | ⚠️ Partial | Basic nav works. No footer, no /shows or /topics index pages. | [phase-6-navigation-polish.md](./plans/phase-6-navigation-polish.md) |
@@ -88,8 +88,9 @@ Phase 7: Scalable Job Queue Processing System
 
 - Episode card component (show name, guest, title, date, duration, 5 insights, topics)
 - Week grouping logic (group by `published_week`, sort by date DESC)
-- Home page with force-dynamic rendering (not ISR)
-- **Not built:** Pagination (load more weeks) — all episodes render on one page
+- Home page with hybrid SSR + client rendering (SSR first batch for SEO, client-side infinite scroll for subsequent pages)
+- Infinite scroll with cursor-based pagination via `/api/public/episodes` (30 episodes per page)
+- `EpisodeList` client component with `IntersectionObserver` for automatic loading
 
 ### Phase 4: Show Pages ✅
 *Reuses episode card from Phase 3, filtered by show.*

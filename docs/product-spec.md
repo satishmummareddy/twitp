@@ -113,6 +113,7 @@ ThisWeekInTechPodcasts.com (TWITP) uses AI to extract key insights, topics, and 
 | AI extraction model | Single-pass (premium model) | Two-pass (cheap + premium) | Single-pass works well enough; two-pass is a future cost optimization for 10K+ episodes |
 | Content type filtering | Videos <10 min = shorts, excluded | Process everything | Keeps data quality high; shorts/clips don't have meaningful insights |
 | Prompt evaluation | A/B testing with side-by-side comparison | Manual review | Systematic prompt iteration with eval_runs and eval_results tables |
+| Home page rendering | Hybrid SSR + client rendering | Full SSR, Full client | SSR first batch for SEO and fast initial load; client-side infinite scroll for subsequent pages via `/api/public/episodes` with cursor-based pagination |
 | Public pages | No auth required | Auth-gated | Maximizes reach, SEO, simplicity |
 | Admin auth | Simple password/env-based for MVP | Supabase Auth | Only 1 admin user needed; avoids auth complexity |
 
@@ -154,7 +155,7 @@ Visitor (public, no auth)
 |---------|-------------|-----------------|
 | Bulk Insights Extraction | Process transcript folders → AI insights + metadata → DB | Admin |
 | Admin UI | Configure AI prompts, select models, trigger/monitor processing | Admin |
-| Home Page | Episodes grouped by week, sorted by date, with 5 key insights each | Visitor |
+| Home Page | Episodes grouped by week, sorted by date, with 5 key insights each. Infinite scroll with cursor-based pagination (30 episodes per page). SSR first batch for SEO, client-side fetching for subsequent pages. | Visitor |
 | Show Pages | Per-show episode listing with same weekly grouping | Visitor |
 | Topic Pages | Per-topic episode listing filtered by topic tag | Visitor |
 | Navigation | Top nav with home, shows dropdown, topics dropdown | Visitor |
