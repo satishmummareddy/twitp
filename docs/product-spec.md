@@ -1,8 +1,8 @@
 # ThisWeekInTechPodcasts.com — Product Specification
 
-> **Version**: 1.0
+> **Version**: 2.0
 > **Date**: March 2026
-> **Status**: Draft
+> **Status**: Built (reflecting actual implementation)
 
 ---
 
@@ -38,20 +38,27 @@ ThisWeekInTechPodcasts.com (TWITP) uses AI to extract key insights, topics, and 
 - Admin UI for prompt configuration and processing triggers
 - SEO-optimized static/ISR pages
 
-**In Scope (Post-MVP / Phase 7):**
-- Inngest job queue for scalable processing with configurable concurrency
-- Two-pass AI pipeline: cheap model for metadata (title+description), premium model for insights (transcript)
-- YouTube Data API for episode discovery + Supadata API for transcript fetching
-- Show onboarding workflow: Discover → Test Run (5 episodes) → Full Batch
-- Batch overview page (all shows, status, stats) + show detail page (3-step collapsible workflow)
-- Scheduled processing: Inngest cron auto-discovers new episodes on configurable interval
-- Cost estimation before batch runs
-- Bulk processing for 100+ shows, 10,000+ episodes
-- Real-time daily processing pipeline for new episodes
-- Cross-episode topic insights (best insights across episodes on a topic)
-- Episode detail page with full summary, quotes, timestamps
-- Search (vector-based semantic search across insights)
+**Built (Phase 7 — Scalable Processing):**
+- Inngest job queue for scalable processing with configurable concurrency (limit of 5 per show)
+- Single-pass AI pipeline (insights from full transcript via premium model)
+- Hybrid discovery: Supadata API for video ID listing + YouTube Data API v3 for full metadata
+- Content type filtering: videos <10 min tagged as shorts/clips, excluded from processing
+- Admin batch workflow: 3-step per show (Discovery → Transcripts → AI Processing) with collapsible sections
+- Granular show status: Not Started → Episodes Ready → Transcripts Ready → Summaries Ready
+- Prompt eval system: full A/B testing tool for prompts with side-by-side comparison
+- Audit trail and cost tracking: per-episode token/cost tracking, processing audit log
+- Auto-cleanup of stale jobs: auto-detects jobs running >15 min with no progress
+- Inngest cancellation via REST API integration
+- Batch overview page (all shows, status, stats) + show detail page
+- Admin dashboard with stats, costs, and jobs table
+
+**Not Yet Implemented:**
+- Two-pass AI pipeline (cheap model for metadata + premium model for insights) — single-pass works well
+- Scheduled processing (Inngest cron for auto-discovery) — all discovery is manual via admin UI
+- Semantic search (vector-based search across insights)
 - Email digest (weekly email with top episodes)
+- Cross-episode topic insights
+- Episode detail page with full summary, quotes, timestamps
 
 **Out of Scope (Future):**
 - User accounts / authentication
@@ -67,17 +74,18 @@ ThisWeekInTechPodcasts.com (TWITP) uses AI to extract key insights, topics, and 
 
 | Layer | Technology | Version | Rationale |
 |-------|------------|---------|-----------|
-| Frontend | Next.js (React) | 15.x | App Router, ISR for SEO, Server Components |
+| Frontend | Next.js (React) | 15.x | App Router, Server Components, force-dynamic for public pages |
 | Backend | Next.js API Routes | - | Unified codebase, no separate server |
-| Database | Supabase (PostgreSQL) | - | Hosted, RLS, real-time capable |
-| Vector DB | pgvector (Supabase) | - | HNSW index, native PostgreSQL extension |
-| AI (Insights) | Anthropic Claude API | claude-sonnet-4-5-20250929 | Premium model for insights extraction (Pass 2) |
-| AI (Metadata) | Google Gemini Flash | gemini-2.0-flash | Cheap model for metadata extraction (Pass 1) |
+| Database | Supabase (PostgreSQL) | - | Hosted, RLS, real-time capable. Uses publishable/secret keys (not anon/service_role) |
+| Vector DB | pgvector (Supabase) | - | HNSW index, native PostgreSQL extension (not yet used) |
+| AI (Insights) | Anthropic Claude API | claude-sonnet-4-5-20250929 | Premium model for single-pass insights extraction |
 | AI (Alt) | OpenAI API | gpt-4o-mini | Alternative model option in admin |
-| Embeddings | OpenAI API | text-embedding-3-small | 1536 dims, cost-effective |
-| Job Queue | Inngest | - | Serverless, native Vercel integration, retries, concurrency control |
-| Transcripts | Supadata API | - | Fetch YouTube transcripts (native captions + AI fallback) |
-| Hosting | Vercel | - | Native Next.js, edge functions, ISR |
+| AI (Alt) | Google Gemini Flash | gemini-2.0-flash | Alternative model option in admin |
+| Embeddings | OpenAI API | text-embedding-3-small | 1536 dims, cost-effective (not yet used) |
+| Job Queue | Inngest | v4 | Serverless, native Vercel integration, retries, concurrency control. Triggers defined inside options object. |
+| Transcripts | Supadata API | - | Fetch YouTube transcripts (native captions + AI fallback). Also used for video ID listing (hybrid discovery). |
+| Video Metadata | YouTube Data API v3 | - | Full metadata (title, description, date, views, captions, tags, thumbnails). Uploads playlist pagination (UC→UU trick). |
+| Hosting | Vercel | - | Native Next.js, edge functions |
 | Styling | Tailwind CSS | 4.x | Utility-first, fast iteration |
 | Analytics | Vercel Analytics | - | Built-in, privacy-friendly |
 | Source Control | GitHub | - | CI/CD integration with Vercel |
@@ -91,18 +99,20 @@ ThisWeekInTechPodcasts.com (TWITP) uses AI to extract key insights, topics, and 
 | No publish dates in transcripts | Can't group by week without dates | YouTube Data API fetches full metadata including publishedAt |
 | Vercel serverless timeout (60s) | AI extraction takes 30-60s per episode | Inngest step functions bypass timeout (each step independent) |
 | Transcript sourcing at scale | Can't rely on local files for 100+ shows | Supadata API fetches transcripts from YouTube URLs automatically |
-| ISR revalidation | New content not immediately visible | Revalidate on-demand after processing completes |
+| Dynamic rendering | No static caching, every request hits DB | Acceptable for current scale; ISR can be added later for performance |
 
 ### 2.2 Key Technical Decisions
 
 | Decision | Choice | Alternatives Considered | Why This Choice |
 |----------|--------|------------------------|-----------------|
-| Rendering strategy | ISR (Incremental Static Regen) | SSR, full static | SEO + fresh content without rebuild; revalidate on new data |
+| Rendering strategy | force-dynamic (SSR) | ISR, full static | Simpler than ISR revalidation; data changes frequently during processing |
 | AI model config | Admin-configurable | Hardcoded | Different models for cost/quality tradeoff; easy to experiment |
-| Processing pipeline | Inngest job queue | API routes + queue table, separate worker | Retries, concurrency, step functions, cron — all built-in. Native Vercel integration. |
-| Episode discovery | YouTube Data API v3 | Manual entry, RSS scraping | Automated, full metadata (title, description, date, views, captions), free tier sufficient |
+| Processing pipeline | Inngest job queue (v4) | API routes + queue table, separate worker | Retries, concurrency, step functions — all built-in. Native Vercel integration. |
+| Episode discovery | Hybrid: Supadata (video IDs) + YouTube API v3 (metadata) | YouTube-only, manual entry, RSS | Supadata lists video IDs cheaply; YouTube API provides full metadata. UC→UU playlist trick for uploads. |
 | Transcript fetching | Supadata API | youtube-transcript (scraper), Whisper | Reliable paid API, native captions + AI fallback, async handling for long videos |
-| AI extraction model | Two-pass (cheap + premium) | Single model | Pass 1 (metadata from title+desc) is ~100x cheaper. Each pass independently configurable and retryable. |
+| AI extraction model | Single-pass (premium model) | Two-pass (cheap + premium) | Single-pass works well enough; two-pass is a future cost optimization for 10K+ episodes |
+| Content type filtering | Videos <10 min = shorts, excluded | Process everything | Keeps data quality high; shorts/clips don't have meaningful insights |
+| Prompt evaluation | A/B testing with side-by-side comparison | Manual review | Systematic prompt iteration with eval_runs and eval_results tables |
 | Public pages | No auth required | Auth-gated | Maximizes reach, SEO, simplicity |
 | Admin auth | Simple password/env-based for MVP | Supabase Auth | Only 1 admin user needed; avoids auth complexity |
 
@@ -485,8 +495,16 @@ topics
 │
 prompts (system-level, not per-show)
 │
+processing_config (key-value config store)
+│
 processing_jobs
 │   └── references show_id and optionally episode_id
+│
+processing_audit_log
+│   └── references episode_id (per-episode processing audit trail)
+│
+eval_runs (prompt A/B test runs)
+│   └── eval_results (per-episode comparison results)
 │
 content_embeddings
     └── references episode_id or insight_id
@@ -531,6 +549,7 @@ content_embeddings
 | duration_seconds | INTEGER | Yes | - | | |
 | duration_display | TEXT | Yes | - | | e.g., "1:13:28" |
 | view_count | INTEGER | Yes | - | | From YouTube at import time |
+| like_count | INTEGER | Yes | - | | From YouTube at import time |
 | published_at | TIMESTAMPTZ | Yes | - | | YouTube publish date |
 | published_week | DATE | Yes | - | | Monday of publish week (for grouping) |
 | transcript_text | TEXT | Yes | - | | Full transcript (for reprocessing) |
@@ -539,6 +558,13 @@ content_embeddings
 | processing_status | TEXT | No | 'pending' | CHECK: 'pending' \| 'processing' \| 'completed' \| 'failed' | |
 | processing_error | TEXT | Yes | - | | Error message if failed |
 | is_published | BOOLEAN | No | false | | Visible on public site |
+| content_type | TEXT | Yes | 'episode' | | 'episode' or 'short'. Videos <10 min tagged as shorts, excluded from processing. |
+| thumbnail_url | TEXT | Yes | - | | YouTube thumbnail URL |
+| youtube_tags | TEXT[] | Yes | - | | Creator-provided tags from YouTube |
+| input_tokens | INTEGER | Yes | - | | Token count for AI input (cost tracking) |
+| output_tokens | INTEGER | Yes | - | | Token count for AI output (cost tracking) |
+| processing_cost | NUMERIC | Yes | - | | Calculated cost in USD |
+| processing_duration_ms | INTEGER | Yes | - | | Time taken for AI processing |
 | created_at | TIMESTAMPTZ | No | NOW() | | |
 | updated_at | TIMESTAMPTZ | No | NOW() | | |
 
@@ -644,6 +670,66 @@ content_embeddings
 | created_at | TIMESTAMPTZ | No | NOW() | | |
 
 **Indexes:** `content_embeddings_embedding_idx` (HNSW, cosine), `idx_embeddings_episode`
+
+---
+
+#### Table: `processing_config`
+
+| Column | Type | Nullable | Default | Constraints | Notes |
+|--------|------|----------|---------|-------------|-------|
+| id | UUID | No | gen_random_uuid() | PK | |
+| key | TEXT | No | - | UNIQUE | e.g., "concurrency_limit", "pass_1_model" |
+| value | JSONB | No | - | | Config value |
+| updated_at | TIMESTAMPTZ | No | NOW() | | |
+
+**RLS:** No public access (admin-only via service role)
+
+---
+
+#### Table: `eval_runs`
+
+| Column | Type | Nullable | Default | Constraints | Notes |
+|--------|------|----------|---------|-------------|-------|
+| id | UUID | No | gen_random_uuid() | PK | |
+| name | TEXT | No | - | | Descriptive name for the eval run |
+| prompt_a | TEXT | No | - | | First prompt variant |
+| prompt_b | TEXT | No | - | | Second prompt variant |
+| model | TEXT | No | - | | AI model used |
+| status | TEXT | No | 'pending' | | pending, running, completed |
+| created_at | TIMESTAMPTZ | No | NOW() | | |
+
+---
+
+#### Table: `eval_results`
+
+| Column | Type | Nullable | Default | Constraints | Notes |
+|--------|------|----------|---------|-------------|-------|
+| id | UUID | No | gen_random_uuid() | PK | |
+| eval_run_id | UUID | No | - | FK → eval_runs ON DELETE CASCADE | |
+| episode_id | UUID | No | - | FK → episodes | |
+| result_a | JSONB | Yes | - | | Output from prompt A |
+| result_b | JSONB | Yes | - | | Output from prompt B |
+| created_at | TIMESTAMPTZ | No | NOW() | | |
+
+---
+
+#### Table: `processing_audit_log`
+
+| Column | Type | Nullable | Default | Constraints | Notes |
+|--------|------|----------|---------|-------------|-------|
+| id | UUID | No | gen_random_uuid() | PK | |
+| episode_id | UUID | No | - | FK → episodes | |
+| action | TEXT | No | - | | e.g., "ai_extraction", "transcript_fetch" |
+| model | TEXT | Yes | - | | AI model used |
+| input_tokens | INTEGER | Yes | - | | |
+| output_tokens | INTEGER | Yes | - | | |
+| cost | NUMERIC | Yes | - | | Calculated cost in USD |
+| duration_ms | INTEGER | Yes | - | | Processing time |
+| status | TEXT | No | - | | success, failed |
+| error | TEXT | Yes | - | | Error message if failed |
+| created_at | TIMESTAMPTZ | No | NOW() | | |
+
+**RLS:** No public access (admin-only via service role)
 
 ---
 
@@ -822,7 +908,7 @@ jobs:
 | Server Components | Default for all public pages (SEO + performance) |
 | Client Components | Only for interactive elements (dropdowns, mobile nav) |
 | Data fetching | Server components fetch via Supabase server client |
-| ISR | `revalidate = 3600` for public pages; on-demand after processing |
+| Dynamic rendering | `force-dynamic` for public pages (simpler than ISR revalidation) |
 | API validation | Zod schemas for request bodies |
 | Environment secrets | `process.env` server-side only, never in client bundle |
 
@@ -850,8 +936,8 @@ jobs:
 | Variable | Required | Secret | Description |
 |----------|----------|--------|-------------|
 | NEXT_PUBLIC_SUPABASE_URL | Yes | No | Supabase project URL |
-| NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | Yes | No | Public auth key (was anon key) |
-| SUPABASE_SECRET_KEY | Yes | Yes | Admin key (was service_role) |
+| NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | Yes | No | Supabase publishable key (note: not the standard anon key name) |
+| SUPABASE_SECRET_KEY | Yes | Yes | Supabase secret key (note: not the standard service_role key name) |
 | ANTHROPIC_API_KEY | Yes | Yes | Claude API key (Pass 2 insights) |
 | OPENAI_API_KEY | Yes | Yes | Embeddings + alt model |
 | GOOGLE_AI_API_KEY | Yes | Yes | Gemini Flash (Pass 1 metadata) |
@@ -881,7 +967,7 @@ jobs:
 | Transcript source for new shows | YouTube auto-captions, Whisper, third-party API | **Supadata API** — reliable, native captions + AI fallback, async for long videos | Mar 2026 |
 | Episode discovery for new shows | Manual, RSS, YouTube API | **YouTube Data API v3** — full metadata (title, description, date, views, captions) | Mar 2026 |
 | Processing at scale (10K+ episodes) | Fire-and-forget, Inngest, Trigger.dev, Railway | **Inngest** — serverless job queue, native Vercel integration, retries, concurrency, cron | Mar 2026 |
-| AI model strategy | Single model, multi-model | **Two-pass pipeline** — cheap model (Gemini Flash) for metadata from title+desc, premium model (Claude Sonnet) for insights from transcript | Mar 2026 |
+| AI model strategy | Single model, two-pass, multi-model | **Single-pass** — premium model (Claude Sonnet) for insights from transcript. Two-pass (cheap+premium) deferred as cost optimization for 10K+ episodes. | Mar 2026 |
 | Rate limiting for YouTube API | Quota is 10K units/day | Sufficient — channel with 300 videos costs ~10 units | Mar 2026 |
 | Hosting transcript text in DB | Store full transcript or just insights | Store both (enables reprocessing) | Mar 2026 |
 
@@ -893,6 +979,7 @@ jobs:
 |---------|------|---------|
 | 1.0 | March 2026 | Initial draft |
 | 1.1 | March 2026 | Added Phase 7: Scalable processing — Inngest, two-pass AI pipeline, YouTube discovery, Supadata transcripts, show onboarding workflow (Discover → Test Run → Full Batch), scheduled processing, admin dashboard. Updated tech stack, env vars, open questions, backlog, admin flows, page inventory. |
+| 2.0 | March 2026 | Updated to reflect actual implementation. Key changes: single-pass pipeline (not two-pass), hybrid discovery (Supadata for video IDs + YouTube API for metadata), content type filtering (episodes vs shorts), prompt eval system, audit trail + cost tracking, Inngest cancellation via REST API, auto-cleanup of stale jobs, granular show status, force-dynamic instead of ISR. Added new tables: processing_config, eval_runs, eval_results, processing_audit_log. Added new episode columns: content_type, input/output_tokens, processing_cost, processing_duration_ms, thumbnail_url, youtube_tags, like_count. Noted unimplemented features: two-pass pipeline, scheduled processing, semantic search, email digest. |
 
 ---
 

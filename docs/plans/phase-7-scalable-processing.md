@@ -1,6 +1,6 @@
 # Phase 7: Scalable Job Queue Processing System
 
-**Status:** Planned
+**Status:** Mostly Complete (7A, 7C, 7D, 7F done; 7B, 7E not started)
 **Dependencies:** Phase 2 complete (basic extraction pipeline + admin UI working)
 **Estimated Effort:** 16-18 sessions (across 6 sub-phases)
 **Product Spec Reference:** Backlog #2 — "Multi-Show Bulk Processing", Backlog #3 — "Daily Processing Pipeline"
@@ -120,8 +120,8 @@ TWITP currently processes podcast transcripts through a fire-and-forget bulk API
 |----------|--------|-----|
 | **Job queue runtime** | **Inngest** | Serverless, native Vercel/Next.js integration, built-in retries, concurrency control, step functions, cron. No infrastructure to manage. |
 | **Transcript fetching** | **Supadata API** | Reliable paid API vs brittle scraper. Supports native captions + AI fallback. Async handling for long videos built in. |
-| **Episode discovery** | **YouTube Data API v3** | Supadata only fetches transcripts, not video listings. YouTube API discovers all videos from a channel with full metadata. |
-| **Processing model** | **Two-pass pipeline** | Pass 1 (metadata from title+description) is very cheap. Pass 2 (insights from transcript) needs quality. Each pass independently retryable. |
+| **Episode discovery** | **Hybrid: Supadata (video IDs) + YouTube API v3 (metadata)** | Supadata lists video IDs cheaply; YouTube API provides full metadata. UC→UU uploads playlist trick for pagination. |
+| **Processing model** | **Single-pass pipeline** (planned: two-pass) | Single-pass with premium model works well. Two-pass deferred as cost optimization for 10K+ episodes. |
 | **Concurrency** | **Configurable via admin UI** | Inngest supports `concurrency: { limit: N }` natively. Admin starts low, increases as rate limits allow. |
 | **Admin workflow** | **3-step per show** | Discovery → Test Run → Full Batch prevents expensive mistakes. Admin reviews quality before committing to 10K API calls. |
 | **Keep existing system** | **Parallel paths** | Current `/api/admin/processing/bulk` stays functional during migration. New Inngest path is separate. |
@@ -272,11 +272,17 @@ TWITP currently processes podcast transcripts through a fire-and-forget bulk API
 
 ## Implementation Plan
 
-### 7A: Inngest Integration + Single-Pass Queue
+### 7A: Inngest Integration + Single-Pass Queue ✅ Complete
 
 *~3 sessions. Install Inngest, create serve route, migrate current bulk processing to Inngest step functions with configurable concurrency.*
 
-#### What Ships
+#### Implementation Notes
+
+- **Inngest v4 API**: Triggers are defined inside the `options` object (not as a separate argument). This is a key API difference from v3 documentation.
+- **Concurrency**: Limit of 5 per show (`concurrency: { limit: 5, key: "event.data.showId" }`)
+- **Single-pass only**: Two-pass (7B) was not implemented. Episodes go through a single AI extraction step using the premium model.
+
+#### What Shipped
 
 - Inngest SDK installed and configured with Next.js serve route at `/api/inngest`
 - `batch-process` Inngest function that replaces fire-and-forget bulk processing
@@ -287,11 +293,15 @@ TWITP currently processes podcast transcripts through a fire-and-forget bulk API
 
 ---
 
-### 7B: Two-Pass Processing Pipeline
+### 7B: Two-Pass Processing Pipeline ❌ Not Implemented
 
 *~3 sessions. Split extraction into metadata pass (cheap model, uses title+description) and insights pass (premium model, uses transcript).*
 
-#### What Ships
+#### Decision
+
+Not implemented. The single-pass approach (premium model processing full transcript) works well for current scale. Two-pass is a cost optimization that becomes valuable at 10K+ episodes where the cheap metadata pass (~100x cheaper) would save significant money. Can be added later without architectural changes since the Inngest step function pattern supports adding steps.
+
+#### What Was Planned (Not Built)
 
 - Two-pass processing: Pass 1 (metadata) and Pass 2 (insights) as separate Inngest steps
 - Pass 1 uses only episode title + description — very cheap, no transcript needed
@@ -304,61 +314,71 @@ TWITP currently processes podcast transcripts through a fire-and-forget bulk API
 
 ---
 
-### 7C: YouTube Discovery + Supadata Transcripts
+### 7C: YouTube Discovery + Supadata Transcripts ✅ Complete
 
 *~3 sessions. Auto-discover videos from YouTube channels and fetch transcripts via Supadata API.*
 
-#### What Ships
+#### Implementation Notes
 
-- YouTube Data API v3 integration for video discovery (channel listing, video metadata)
+- **Hybrid discovery approach**: Supadata API is used for video ID listing (cheaper/simpler), then YouTube Data API v3 is called for full metadata per video. This avoids YouTube API quota usage for the initial listing step.
+- **Uploads playlist pagination**: Uses the UC→UU channel ID trick to get the uploads playlist without an extra API call.
+- **Content type filtering**: Videos shorter than 10 minutes are automatically tagged as `content_type: 'short'` and excluded from processing. Only full episodes (>=10 min) go through the AI pipeline.
+
+#### What Shipped
+
+- Hybrid discovery: Supadata for video ID listing + YouTube Data API v3 for full metadata
 - Supadata API integration for transcript fetching (native captions + AI fallback)
 - Add show by YouTube URL (supports `@Channel`, `/channel/UCxxx`, playlist URLs)
-- "Discover Episodes" Inngest function: paginate all videos, create episode records
-- "Fetch Transcript" Inngest function: call Supadata per episode, handle async jobs for long videos
-- Episodes store full YouTube metadata: title, description, publishedAt, duration, viewCount, likeCount, thumbnails, caption availability
+- Content type filtering: episodes vs shorts/clips based on duration threshold
+- Episodes store full YouTube metadata: title, description, publishedAt, duration, viewCount, likeCount, thumbnails, tags, caption availability
 
 ---
 
-### 7D: Show Processing Workflow UI
+### 7D: Show Processing Workflow UI ✅ Complete
 
 *~3 sessions. The core admin experience: structured 3-step workflow for onboarding and processing each show.*
 
-#### What Ships
+#### Implementation Notes
+
+- **3-step workflow** is Discovery → Transcripts → AI Processing (not Discovery → Test Run → Full Batch as originally planned). The test run concept was simplified into the main workflow.
+- **Auto-polling**: The UI automatically polls for status updates during processing.
+- **Granular status badges**: Shows progress through stages: Not Started → Episodes Ready → Transcripts Ready → Summaries Ready.
+- **Episode table**: Each episode row shows transcript status and AI processing status columns.
+
+#### What Shipped
 
 **Batch Overview Page** (`/admin/batch`):
 - Summary stats: total shows, total episodes processed, currently running, queued, failed
-- Shows table: name, status (Planned/Discovering/Test Run/Processing/Completed), episode counts, last updated
-- Grouped by status: Currently Processing → Queued → Completed → Planned
+- Shows table: name, granular status, episode counts (filtered to episodes only, excluding shorts)
+- Status badges showing progress through discovery/transcript/summary stages
 
 **Show Processing Detail Page** (`/admin/batch/[showId]`):
 
-- **▶ Step 1: Discovery** (collapsible)
+- **Step 1: Discovery** (collapsible)
   - YouTube URL input, "Fetch Episodes" button
-  - Status: Not Started / Fetching / Complete (N episodes found)
-  - Episode list: title, date, duration, views, has captions ✓/✗
-  - Select/deselect episodes
+  - Content type filtering display (episodes vs shorts)
+  - Episode list with metadata
 
-- **▶ Step 2: Test Run** (collapsible)
-  - Auto-selects 5 episodes or admin picks
-  - Buttons: Fetch Transcripts → Run Pass 1 → Run Pass 2
-  - Inline output review: guest_name, topics, insights, summary per episode
-  - "Re-run with different prompt" option
-  - Per-episode status: transcript ✓ / metadata ✓ / insights ✓
+- **Step 2: Transcripts** (collapsible)
+  - Fetch transcripts via Supadata
+  - Per-episode transcript status
 
-- **▶ Step 3: Full Batch** (collapsible)
-  - Cost estimate before starting
-  - Concurrency selector, pass selector
-  - "Start Full Batch" button
-  - Progress: Transcripts N/M → Metadata N/M → Insights N/M → Failed N
-  - Failed episodes expandable with errors + retry button
+- **Step 3: AI Processing** (collapsible)
+  - Start AI extraction for episodes with transcripts
+  - Progress tracking with auto-polling
+  - Per-episode AI processing status
 
 ---
 
-### 7E: Scheduled Processing
+### 7E: Scheduled Processing ❌ Not Implemented
 
 *~2 sessions. Inngest cron that auto-discovers new episodes on configurable interval.*
 
-#### What Ships
+#### Decision
+
+Not implemented. All episode discovery is currently manual via the admin UI batch workflow. Scheduled processing would automate this with an Inngest cron, but the manual workflow is sufficient for current needs. Can be added later by creating a `scheduled-discover` Inngest cron function.
+
+#### What Was Planned (Not Built)
 
 - Inngest cron function `scheduled-discover` that runs hourly
 - Checks `processing_config.check_interval_hours` and skips if not enough time since `show.last_checked_at`
@@ -368,16 +388,25 @@ TWITP currently processes podcast transcripts through a fire-and-forget bulk API
 
 ---
 
-### 7F: Enhanced Admin Dashboard
+### 7F: Enhanced Admin Dashboard ✅ Complete
 
 *~2 sessions. Comprehensive dashboard with cost estimation and job history.*
 
-#### What Ships
+#### Implementation Notes
 
-- Dashboard page with running/queued/completed/failed counts
-- Per-show processing status with completion percentage
-- Cost estimator: calculates expected cost before starting a batch based on episode count, caption availability, and model pricing
-- Filterable job history table
+- **Cost tracking columns**: Episodes table has input_tokens, output_tokens, processing_cost, processing_duration_ms columns for per-episode cost tracking.
+- **Audit trail**: processing_audit_log table records every processing action with model, tokens, cost, duration, and status.
+- **Auto-cleanup of stale jobs**: Automatically detects jobs that have been running for >15 minutes with no progress and marks them as failed.
+- **Inngest REST API cancellation**: Integrates with Inngest's REST API to cancel running functions, not just mark them as cancelled in the database.
+
+#### What Shipped
+
+- Dashboard page with running/queued/completed/failed counts and stats
+- Per-episode cost tracking (input_tokens, output_tokens, processing_cost)
+- Processing audit log table
+- Jobs table with status, duration, and cost information
+- Auto-cleanup of stale jobs (>15 min with no progress)
+- Inngest REST API integration for cancelling running functions
 - Retry controls for failed episodes
 
 ---

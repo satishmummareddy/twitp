@@ -1,62 +1,65 @@
 # ThisWeekInTechPodcasts.com — Implementation Plan Overview
 
 > **Product Spec:** [docs/product-spec.md](./product-spec.md)
-> **Status:** Planning
-> **Date:** March 2026
+> **Status:** Mostly Complete (reflecting actual build state)
+> **Date:** March 2026 (updated)
 
 ---
 
 ## Phase Dependency Graph
 
 ```
-Phase 1: Project Setup & Data Model
+Phase 1: Project Setup & Data Model                           ✅ Complete
     │
     ▼
-Phase 2: Bulk Podcast Insights Extraction (Admin UI + AI Pipeline)
+Phase 2: Bulk Podcast Insights Extraction (Admin UI + AI)     ✅ Complete
     │
     ▼
-Phase 3: Home Page (weekly episode digest)
+Phase 3: Home Page (weekly episode digest)                    ✅ Complete
     │
     ├──────────────────┐
     ▼                  ▼
-Phase 4: Show Pages   Phase 5: Topic Pages
+Phase 4: Show Pages   Phase 5: Topic Pages                    ✅ Complete
     │                  │
     └──────────────────┘
              │
              ▼
-Phase 6: Navigation & Polish (nav dropdowns, SEO, responsive)
+Phase 6: Navigation & Polish                                  ⚠️ Partial
     │
     ▼
 Phase 7: Scalable Job Queue Processing System
-    ├── 7A: Inngest Integration + Single-Pass Queue
-    ├── 7B: Two-Pass Processing Pipeline
-    ├── 7C: YouTube Discovery + Supadata Transcripts
-    ├── 7D: Show Processing Workflow UI
-    ├── 7E: Scheduled Processing (cron)
-    └── 7F: Enhanced Admin Dashboard
+    ├── 7A: Inngest Integration + Single-Pass Queue           ✅ Complete
+    ├── 7B: Two-Pass Processing Pipeline                      ❌ Not started
+    ├── 7C: YouTube Discovery + Supadata Transcripts          ✅ Complete
+    ├── 7D: Show Processing Workflow UI                       ✅ Complete
+    ├── 7E: Scheduled Processing (cron)                       ❌ Not started
+    └── 7F: Enhanced Admin Dashboard                          ✅ Complete
 ```
 
 ---
 
 ## Phase Summary
 
-| Phase | Feature | Est. Sessions | Dependencies | Plan Doc |
-|-------|---------|---------------|-------------|----------|
-| 1 | Project Setup & Data Model | 2-3 | None | [phase-1-project-setup.md](./plans/phase-1-project-setup.md) |
-| 2 | Bulk Insights Extraction | 4-6 | Phase 1 | [phase-2-insights-extraction.md](./plans/phase-2-insights-extraction.md) |
-| 3 | Home Page | 2-3 | Phase 2 | [phase-3-home-page.md](./plans/phase-3-home-page.md) |
-| 4 | Show Pages | 1-2 | Phase 3 | [phase-4-show-pages.md](./plans/phase-4-show-pages.md) |
-| 5 | Topic Pages | 1-2 | Phase 3 | [phase-5-topic-pages.md](./plans/phase-5-topic-pages.md) |
-| 6 | Navigation & Polish | 2-3 | Phases 4-5 | [phase-6-navigation-polish.md](./plans/phase-6-navigation-polish.md) |
-| 7 | Scalable Job Queue Processing | 16-18 | Phase 2 | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
-
-**Total estimated: 28-37 sessions**
+| Phase | Feature | Status | Notes | Plan Doc |
+|-------|---------|--------|-------|----------|
+| 1 | Project Setup & Data Model | ✅ Complete | Plus audit/cost columns added later | [phase-1-project-setup.md](./plans/phase-1-project-setup.md) |
+| 2 | Bulk Insights Extraction | ✅ Complete | Plus eval system added later | [phase-2-insights-extraction.md](./plans/phase-2-insights-extraction.md) |
+| 3 | Home Page | ✅ Complete | No pagination yet | [phase-3-home-page.md](./plans/phase-3-home-page.md) |
+| 4 | Show Pages | ✅ Complete | | [phase-4-show-pages.md](./plans/phase-4-show-pages.md) |
+| 5 | Topic Pages | ✅ Complete | | [phase-5-topic-pages.md](./plans/phase-5-topic-pages.md) |
+| 6 | Navigation & Polish | ⚠️ Partial | Basic nav works. No footer, no /shows or /topics index pages. | [phase-6-navigation-polish.md](./plans/phase-6-navigation-polish.md) |
+| 7A | Inngest Integration | ✅ Complete | Inngest v4, concurrency limit of 5 per show | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
+| 7B | Two-Pass Pipeline | ❌ Not started | Single-pass works well; two-pass deferred as cost optimization | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
+| 7C | YouTube + Supadata Discovery | ✅ Complete | Hybrid: Supadata for video IDs, YouTube API for metadata | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
+| 7D | Workflow UI | ✅ Complete | 3-step workflow (Discovery → Transcripts → AI Processing) | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
+| 7E | Scheduled Processing | ❌ Not started | All discovery is manual via admin UI | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
+| 7F | Admin Dashboard | ✅ Complete | Stats, costs, jobs table, stale job cleanup, Inngest cancellation | [phase-7-scalable-processing.md](./plans/phase-7-scalable-processing.md) |
 
 ---
 
 ## Phase Details
 
-### Phase 1: Project Setup & Data Model
+### Phase 1: Project Setup & Data Model ✅
 *Foundation — everything depends on this.*
 
 - Initialize Next.js 15 project with TypeScript, Tailwind CSS 4, ESLint
@@ -64,9 +67,10 @@ Phase 7: Scalable Job Queue Processing System
 - Create all database tables, indexes, RLS policies
 - Configure GitHub repo + Vercel deployment
 - Set up environment variables
-- Verify: `npm run build` passes, Supabase tables created, Vercel deploys
+- **Added later:** audit/cost columns on episodes (input_tokens, output_tokens, processing_cost, processing_duration_ms), content_type, thumbnail_url, youtube_tags, like_count
+- **Added later:** New tables: processing_config, eval_runs, eval_results, processing_audit_log
 
-### Phase 2: Bulk Podcast Insights Extraction
+### Phase 2: Bulk Podcast Insights Extraction ✅
 *The core value — AI processing pipeline + admin UI.*
 
 - Admin authentication (password-based)
@@ -76,57 +80,64 @@ Phase 7: Scalable Job Queue Processing System
 - AI insights extraction (Claude/OpenAI API calls)
 - Episode date fetching (YouTube Data API)
 - Processing queue with progress tracking
-- Vector embeddings generation
-- Verify: Process all 269 Lenny's Podcast episodes, insights in DB
+- **Added later:** Prompt eval system (A/B testing with side-by-side comparison, eval_runs + eval_results tables)
+- **Not built:** Vector embeddings generation (deferred)
 
-### Phase 3: Home Page
+### Phase 3: Home Page ✅
 *First public-facing page — the weekly digest.*
 
 - Episode card component (show name, guest, title, date, duration, 5 insights, topics)
 - Week grouping logic (group by `published_week`, sort by date DESC)
-- Home page with ISR (revalidate hourly)
-- Pagination (load more weeks)
-- Verify: Home page renders with real data from Phase 2
+- Home page with force-dynamic rendering (not ISR)
+- **Not built:** Pagination (load more weeks) — all episodes render on one page
 
-### Phase 4: Show Pages
+### Phase 4: Show Pages ✅
 *Reuses episode card from Phase 3, filtered by show.*
 
 - Show detail page (`/shows/[slug]`)
 - Show header (name, description, episode count)
 - Filtered episode listing (same weekly grouping)
-- Shows index page (`/shows`)
-- Verify: Lenny's Podcast show page renders with all episodes
+- **Not built:** Shows index page (`/shows`) — no dedicated listing page
 
-### Phase 5: Topic Pages
+### Phase 5: Topic Pages ✅
 *Reuses episode card from Phase 3, filtered by topic.*
 
 - Topic detail page (`/topics/[slug]`)
 - Topic header (name, episode count)
 - Filtered episode listing (same weekly grouping)
-- Topics index page (`/topics`)
-- Verify: Topic pages render with correctly tagged episodes
+- **Not built:** Topics index page (`/topics`) — no dedicated listing page
 
-### Phase 6: Navigation & Polish
-*Ties everything together.*
+### Phase 6: Navigation & Polish ⚠️ Partial
+*Basic navigation works, but incomplete.*
 
 - Top navigation bar with logo, Home, Shows dropdown, Topics dropdown
 - Mobile responsive nav (hamburger menu)
-- SEO metadata (Open Graph, Twitter cards, structured data)
-- Loading states and error pages
-- Footer
-- Performance optimization (image optimization, font loading)
-- Verify: Full user flow works end-to-end, Lighthouse score > 90
+- **Not built:** Footer
+- **Not built:** Shows index page (`/shows`)
+- **Not built:** Topics index page (`/topics`)
+- **Not built:** SEO metadata (Open Graph, Twitter cards, structured data)
+- **Not built:** Performance optimization (image optimization, font loading)
 
 ### Phase 7: Scalable Job Queue Processing System
 *Scale from prototype to 10K+ episodes across 100+ shows.*
 
-- **7A: Inngest Integration** — Replace fire-and-forget with Inngest job queue, configurable concurrency
-- **7B: Two-Pass Pipeline** — Pass 1 (metadata from title+description, cheap model) + Pass 2 (insights from transcript, premium model)
-- **7C: YouTube + Supadata** — Discover episodes via YouTube API, fetch transcripts via Supadata API
-- **7D: Workflow UI** — 3-step per-show workflow: Discover → Test Run (5 eps) → Full Batch. Batch overview page + show detail page with collapsible sections
-- **7E: Scheduled Processing** — Inngest cron auto-discovers new episodes on configurable interval
-- **7F: Dashboard** — Processing stats, cost estimation, job history, retry controls
-- Verify: Process 10K+ episodes reliably with cost transparency
+- **7A: Inngest Integration** ✅ — Inngest v4 job queue with concurrency limit of 5 per show. Triggers defined inside options object.
+- **7B: Two-Pass Pipeline** ❌ — Not implemented. Single-pass approach works well. Two-pass is a cost optimization for 10K+ episodes.
+- **7C: YouTube + Supadata** ✅ — Hybrid discovery: Supadata for video ID listing, YouTube API for full metadata. Uploads playlist pagination (UC→UU trick). Content type filtering (episodes vs shorts <10 min).
+- **7D: Workflow UI** ✅ — 3-step per-show workflow (Discovery → Transcripts → AI Processing). Auto-polling for status updates. Granular status badges. Episode table with transcript/AI status columns.
+- **7E: Scheduled Processing** ❌ — Not implemented. All discovery is manual via admin UI.
+- **7F: Dashboard** ✅ — Stats, cost tracking columns, processing audit trail, auto-cleanup of stale jobs (>15 min with no progress), Inngest REST API cancellation.
+
+### Unplanned Features Built
+
+These features were not in the original plan but were added during implementation:
+
+- **Prompt Eval System** — Full A/B testing tool for prompts with side-by-side comparison (eval_runs, eval_results tables)
+- **Audit Trail & Cost Tracking** — Per-episode token/cost tracking (input_tokens, output_tokens, processing_cost, processing_duration_ms), processing_audit_log table
+- **Content Type Filtering** — Videos <10 min automatically tagged as shorts/clips, excluded from processing
+- **Auto-cleanup of Stale Jobs** — Auto-detects jobs running >15 min with no progress
+- **Inngest Cancellation** — REST API integration to cancel running Inngest functions
+- **Granular Show Status** — Not Started → Episodes Ready → Transcripts Ready → Summaries Ready
 
 ---
 
