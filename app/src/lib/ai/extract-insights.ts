@@ -45,7 +45,7 @@ export async function extractAndSaveInsights(
     }
 
     // Call AI
-    const result = await callAIProvider(
+    const { extraction: result } = await callAIProvider(
       {
         provider: promptConfig.model_provider,
         model: promptConfig.model_name,

@@ -5,6 +5,19 @@ export interface AIExtractionResult {
   topics: string[];
 }
 
+export interface AIUsageMetadata {
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+  provider: "anthropic" | "openai";
+  duration_ms: number;
+}
+
+export interface AICallResult {
+  extraction: AIExtractionResult;
+  usage: AIUsageMetadata;
+}
+
 interface AIProviderConfig {
   provider: "anthropic" | "openai";
   model: string;
@@ -17,7 +30,7 @@ interface AIProviderConfig {
 export async function callAIProvider(
   config: AIProviderConfig,
   prompt: string
-): Promise<AIExtractionResult> {
+): Promise<AICallResult> {
   if (config.provider === "anthropic") {
     return callAnthropic(config.apiKey, config.model, prompt);
   } else {
@@ -29,10 +42,11 @@ async function callAnthropic(
   apiKey: string,
   model: string,
   prompt: string
-): Promise<AIExtractionResult> {
+): Promise<AICallResult> {
   const maxRetries = 3;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const startTime = Date.now();
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -68,7 +82,16 @@ async function callAnthropic(
       throw new Error("No text in Anthropic response");
     }
 
-    return parseAIResponse(text);
+    return {
+      extraction: parseAIResponse(text),
+      usage: {
+        input_tokens: data.usage?.input_tokens || 0,
+        output_tokens: data.usage?.output_tokens || 0,
+        model,
+        provider: "anthropic",
+        duration_ms: Date.now() - startTime,
+      },
+    };
   }
 
   throw new Error("Max retries exceeded for Anthropic API");
@@ -78,7 +101,8 @@ async function callOpenAI(
   apiKey: string,
   model: string,
   prompt: string
-): Promise<AIExtractionResult> {
+): Promise<AICallResult> {
+  const startTime = Date.now();
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -103,7 +127,16 @@ async function callOpenAI(
     throw new Error("No text in OpenAI response");
   }
 
-  return parseAIResponse(text);
+  return {
+    extraction: parseAIResponse(text),
+    usage: {
+      input_tokens: data.usage?.prompt_tokens || 0,
+      output_tokens: data.usage?.completion_tokens || 0,
+      model,
+      provider: "openai",
+      duration_ms: Date.now() - startTime,
+    },
+  };
 }
 
 /**

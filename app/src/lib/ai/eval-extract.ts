@@ -88,7 +88,7 @@ export async function extractForEval(
 
   // Call AI and measure duration
   const startTime = Date.now();
-  const result = await callAIProvider(
+  const { extraction: result } = await callAIProvider(
     {
       provider: promptConfig.model_provider,
       model: promptConfig.model_name,

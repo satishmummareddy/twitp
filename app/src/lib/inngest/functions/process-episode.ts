@@ -2,6 +2,9 @@ import { inngest } from "../client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callAIProvider } from "@/lib/ai/providers";
 import { generateSlug } from "@/lib/transcripts/parser";
+import { logAuditEvent } from "@/lib/audit/logger";
+import { estimateCost } from "@/lib/ai/cost";
+import type { AICallResult } from "@/lib/ai/providers";
 
 /**
  * Per-episode processing function.
@@ -21,6 +24,49 @@ export const processEpisode = inngest.createFunction(
       },
     ],
     triggers: [{ event: "episode/process.requested" }],
+    onFailure: async ({ event, error }) => {
+      // event.data.event.data contains the original event data
+      const { episodeId, jobId } = event.data.event.data;
+      const supabase = createAdminClient();
+
+      await supabase
+        .from("episodes")
+        .update({
+          processing_status: "failed",
+          processing_error: error.message?.slice(0, 500) || "Unknown error",
+        })
+        .eq("id", episodeId);
+
+      await logAuditEvent({
+        episodeId,
+        jobId,
+        eventType: "processing_failed",
+        errorMessage: error.message?.slice(0, 500) || "Unknown error",
+      });
+
+      // Still increment progress so job eventually completes
+      // (simplified version — just increment, no cost)
+      const { data: job } = await supabase
+        .from("processing_jobs")
+        .select("progress_current, progress_total")
+        .eq("id", jobId)
+        .single();
+
+      if (job) {
+        const newProgress = (job.progress_current || 0) + 1;
+        const update: Record<string, unknown> = {
+          progress_current: newProgress,
+        };
+        if (newProgress >= (job.progress_total || 0)) {
+          update.status = "completed";
+          update.completed_at = new Date().toISOString();
+        }
+        await supabase
+          .from("processing_jobs")
+          .update(update)
+          .eq("id", jobId);
+      }
+    },
   },
   async ({ event, step }) => {
     const { episodeId, jobId, showName, promptConfig, forceReprocess } =
@@ -56,9 +102,29 @@ export const processEpisode = inngest.createFunction(
     });
 
     if (!shouldProcess) {
-      // Still update progress for skipped episodes
+      // Still update progress for skipped episodes (no cost)
       await step.run("update-progress-skipped", async () => {
-        await incrementJobProgress(jobId);
+        const supabase = createAdminClient();
+        const { data: job } = await supabase
+          .from("processing_jobs")
+          .select("progress_current, progress_total")
+          .eq("id", jobId)
+          .single();
+
+        if (!job) return;
+
+        const newProgress = (job.progress_current || 0) + 1;
+        const update: Record<string, unknown> = {
+          progress_current: newProgress,
+        };
+        if (newProgress >= job.progress_total) {
+          update.status = "completed";
+          update.completed_at = new Date().toISOString();
+        }
+        await supabase
+          .from("processing_jobs")
+          .update(update)
+          .eq("id", jobId);
       });
       return { episodeId, status: "skipped" };
     }
@@ -70,6 +136,12 @@ export const processEpisode = inngest.createFunction(
         .from("episodes")
         .update({ processing_status: "processing" })
         .eq("id", episodeId);
+
+      await logAuditEvent({
+        episodeId,
+        jobId,
+        eventType: "processing_started",
+      });
     });
 
     // Step 3: Get episode data
@@ -89,39 +161,42 @@ export const processEpisode = inngest.createFunction(
     });
 
     // Step 4: Call AI to extract insights
-    const result = await step.run("extract-insights", async () => {
-      const prompt = promptConfig.template
-        .replace("{show_name}", showName)
-        .replace("{episode_title}", episodeData.title)
-        .replace("{transcript}", episodeData.transcript_text!);
+    const aiResult: AICallResult = await step.run(
+      "extract-insights",
+      async () => {
+        const prompt = promptConfig.template
+          .replace("{show_name}", showName)
+          .replace("{episode_title}", episodeData.title)
+          .replace("{transcript}", episodeData.transcript_text!);
 
-      const apiKey =
-        promptConfig.model_provider === "anthropic"
-          ? process.env.ANTHROPIC_API_KEY
-          : process.env.OPENAI_API_KEY;
+        const apiKey =
+          promptConfig.model_provider === "anthropic"
+            ? process.env.ANTHROPIC_API_KEY
+            : process.env.OPENAI_API_KEY;
 
-      if (!apiKey) {
-        throw new Error(
-          `Missing API key for provider: ${promptConfig.model_provider}`
+        if (!apiKey) {
+          throw new Error(
+            `Missing API key for provider: ${promptConfig.model_provider}`
+          );
+        }
+
+        return callAIProvider(
+          {
+            provider: promptConfig.model_provider as "anthropic" | "openai",
+            model: promptConfig.model_name,
+            apiKey,
+          },
+          prompt
         );
       }
-
-      return callAIProvider(
-        {
-          provider: promptConfig.model_provider as "anthropic" | "openai",
-          model: promptConfig.model_name,
-          apiKey,
-        },
-        prompt
-      );
-    });
+    );
 
     // Step 5: Save results to database
     await step.run("save-results", async () => {
       const supabase = createAdminClient();
 
       // Save insights
-      const insightRows = result.insights.map(
+      const insightRows = aiResult.extraction.insights.map(
         (content: string, index: number) => ({
           episode_id: episodeId,
           position: index + 1,
@@ -134,7 +209,7 @@ export const processEpisode = inngest.createFunction(
 
       // Save topics
       const topicIds: string[] = [];
-      for (const topicSlug of result.topics) {
+      for (const topicSlug of aiResult.extraction.topics) {
         const slug = generateSlug(topicSlug);
         const topicName = topicSlug
           .split("-")
@@ -177,57 +252,98 @@ export const processEpisode = inngest.createFunction(
         );
       }
 
-      // Update episode
+      // Calculate cost for this episode
+      const episodeCost = estimateCost(
+        promptConfig.model_name,
+        aiResult.usage.input_tokens,
+        aiResult.usage.output_tokens
+      );
+
+      // Update episode with summary, status, and cost data
       await supabase
         .from("episodes")
         .update({
-          summary: result.summary,
+          summary: aiResult.extraction.summary,
           guest_name:
-            result.guest_name || episodeData.guest_name,
+            aiResult.extraction.guest_name || episodeData.guest_name,
           ai_model_used: `${promptConfig.model_provider}/${promptConfig.model_name}`,
           processing_status: "completed",
           processing_error: null,
           is_published: true,
+          input_tokens: aiResult.usage.input_tokens,
+          output_tokens: aiResult.usage.output_tokens,
+          processing_cost: episodeCost,
+          processing_duration_ms: aiResult.usage.duration_ms,
         })
         .eq("id", episodeId);
+
+      // Log ai_call_completed audit event
+      await logAuditEvent({
+        episodeId,
+        jobId,
+        eventType: "ai_call_completed",
+        modelProvider: promptConfig.model_provider,
+        modelName: promptConfig.model_name,
+        inputTokens: aiResult.usage.input_tokens,
+        outputTokens: aiResult.usage.output_tokens,
+        costEstimate: episodeCost,
+        durationMs: aiResult.usage.duration_ms,
+      });
+
+      // Log processing_completed audit event
+      await logAuditEvent({
+        episodeId,
+        jobId,
+        eventType: "processing_completed",
+      });
     });
 
-    // Step 6: Update job progress
+    // Step 6: Update job progress + cost totals
     await step.run("update-progress", async () => {
-      await incrementJobProgress(jobId);
+      const supabase = createAdminClient();
+
+      // Read current job totals
+      const { data: currentJob } = await supabase
+        .from("processing_jobs")
+        .select(
+          "progress_current, progress_total, total_input_tokens, total_output_tokens, total_cost"
+        )
+        .eq("id", jobId)
+        .single();
+
+      const newProgress = (currentJob?.progress_current || 0) + 1;
+      const newInputTokens =
+        (currentJob?.total_input_tokens || 0) +
+        (aiResult.usage.input_tokens || 0);
+      const newOutputTokens =
+        (currentJob?.total_output_tokens || 0) +
+        (aiResult.usage.output_tokens || 0);
+      const episodeCost = estimateCost(
+        promptConfig.model_name,
+        aiResult.usage.input_tokens,
+        aiResult.usage.output_tokens
+      );
+      const newCost =
+        parseFloat(String(currentJob?.total_cost || 0)) + episodeCost;
+
+      const update: Record<string, unknown> = {
+        progress_current: newProgress,
+        total_input_tokens: newInputTokens,
+        total_output_tokens: newOutputTokens,
+        total_cost: newCost,
+      };
+
+      if (newProgress >= (currentJob?.progress_total || 0)) {
+        update.status = "completed";
+        update.completed_at = new Date().toISOString();
+      }
+
+      await supabase
+        .from("processing_jobs")
+        .update(update)
+        .eq("id", jobId);
     });
 
     return { episodeId, status: "completed" };
   }
 );
-
-/**
- * Increment the progress counter on a processing job.
- * Also checks if all episodes are done and marks job as completed.
- */
-async function incrementJobProgress(jobId: string) {
-  const supabase = createAdminClient();
-
-  // Get current progress
-  const { data: job } = await supabase
-    .from("processing_jobs")
-    .select("progress_current, progress_total")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) return;
-
-  const newProgress = (job.progress_current || 0) + 1;
-
-  const update: Record<string, unknown> = {
-    progress_current: newProgress,
-  };
-
-  // If all episodes are done, mark job as completed
-  if (newProgress >= job.progress_total) {
-    update.status = "completed";
-    update.completed_at = new Date().toISOString();
-  }
-
-  await supabase.from("processing_jobs").update(update).eq("id", jobId);
-}
