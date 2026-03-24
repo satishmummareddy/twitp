@@ -647,34 +647,8 @@ export function WorkflowPanelInner({
                     </span>
                     {prompt.is_active && (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
-                        Active
+                        Display
                       </span>
-                    )}
-                    {!prompt.is_active && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const res = await fetch("/api/admin/prompts/activate", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ promptId: prompt.id }),
-                            });
-                            if (res.ok) {
-                              setPromotedPrompts((prev) =>
-                                prev.map((p) => ({ ...p, is_active: p.id === prompt.id }))
-                              );
-                            } else {
-                              const data = await res.json();
-                              alert(`Error: ${data.error}`);
-                            }
-                          } catch (err) {
-                            alert(`Error: ${err instanceof Error ? err.message : "unknown"}`);
-                          }
-                        }}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        Set Active
-                      </button>
                     )}
                     <button
                       onClick={async () => {

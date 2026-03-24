@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { isAdminAuthenticated } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PromptEvalLoader } from "./_components/prompt-eval-loader";
+import { ActivePromptSelector } from "./_components/active-prompt-selector";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,12 @@ export default async function AdminPromptsPage() {
     .eq("is_active", true)
     .order("name");
 
+  // Fetch all prompts for the active selector
+  const { data: prompts } = await supabase
+    .from("prompts")
+    .select("id, name, is_active, is_promoted, model_provider, model_name")
+    .order("name");
+
   return (
     <div>
       <h1 className="text-2xl font-bold">Prompt Eval Tool</h1>
@@ -25,6 +32,10 @@ export default async function AdminPromptsPage() {
         Write prompts, run them against episodes, and compare results
         side-by-side
       </p>
+
+      {/* Global Display Prompt Setting */}
+      <ActivePromptSelector prompts={prompts || []} />
+
       <PromptEvalLoader initialShows={shows || []} />
     </div>
   );
