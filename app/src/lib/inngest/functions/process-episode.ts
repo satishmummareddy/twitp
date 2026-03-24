@@ -26,6 +26,21 @@ export const processEpisode = inngest.createFunction(
     const { episodeId, jobId, showName, promptConfig, forceReprocess } =
       event.data;
 
+    // Step 0: Check if job was cancelled
+    const jobCancelled = await step.run("check-job-cancelled", async () => {
+      const supabase = createAdminClient();
+      const { data: job } = await supabase
+        .from("processing_jobs")
+        .select("status")
+        .eq("id", jobId)
+        .single();
+      return job?.status === "failed" || job?.status === "completed";
+    });
+
+    if (jobCancelled) {
+      return { episodeId, status: "skipped-cancelled" };
+    }
+
     // Step 1: Check if already processed (skip if not forcing)
     const shouldProcess = await step.run("check-status", async () => {
       if (forceReprocess) return true;
