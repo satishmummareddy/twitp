@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import { BatchTabs } from "./_components/batch-tabs";
 import { JobsTableLoader } from "./_components/jobs-table-loader";
+import { formatCost } from "@/lib/ai/cost";
 
 export const revalidate = 0;
 
@@ -64,6 +65,15 @@ export default async function BatchOverviewPage() {
     .select("id, show_id, job_type, status, progress_current, progress_total")
     .eq("status", "running");
 
+  // Get total cost from completed jobs
+  const { data: costData } = await supabase
+    .from("processing_jobs")
+    .select("total_cost")
+    .eq("status", "completed")
+    .not("total_cost", "is", null);
+
+  const totalCost = (costData || []).reduce((sum, j) => sum + (j.total_cost || 0), 0);
+
   // Aggregate stats
   const totalShows = shows?.length || 0;
   const totalEpisodes = Object.values(showStats).reduce((sum, s) => sum + s.total, 0);
@@ -79,12 +89,13 @@ export default async function BatchOverviewPage() {
       </p>
 
       {/* Summary Stats */}
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-5">
+      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-6">
         <StatCard label="Shows" value={totalShows} />
         <StatCard label="Total Episodes" value={totalEpisodes} />
         <StatCard label="Processed" value={totalCompleted} color="green" />
         <StatCard label="Failed" value={totalFailed} color="red" />
         <StatCard label="Active Jobs" value={activeJobs} color="blue" />
+        <StatCard label="Total Cost" value={totalCost} color="green" isCost />
       </div>
 
       {/* Tabs: Shows + All Jobs */}
@@ -174,10 +185,12 @@ function StatCard({
   label,
   value,
   color,
+  isCost,
 }: {
   label: string;
   value: number;
   color?: "green" | "red" | "blue";
+  isCost?: boolean;
 }) {
   const colorClass =
     color === "green"
@@ -191,7 +204,9 @@ function StatCard({
   return (
     <div className="rounded-lg border border-zinc-200 p-4">
       <div className="text-xs font-medium text-zinc-500">{label}</div>
-      <div className={`mt-1 text-2xl font-bold tabular-nums ${colorClass}`}>{value}</div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${colorClass}`}>
+        {isCost ? formatCost(value) : value}
+      </div>
     </div>
   );
 }

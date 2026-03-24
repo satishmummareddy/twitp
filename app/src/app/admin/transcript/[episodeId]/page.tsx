@@ -2,6 +2,7 @@ import { isAdminAuthenticated } from "@/lib/admin/auth";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
+import { formatCost, formatTokens } from "@/lib/ai/cost";
 
 export const revalidate = 0;
 
@@ -49,6 +50,12 @@ export default async function EpisodeDetailPage({
     .from("episode_topics")
     .select("topic_id, topics(name, slug)")
     .eq("episode_id", episodeId);
+
+  const { data: auditLog } = await supabase
+    .from("processing_audit_log")
+    .select("*")
+    .eq("episode_id", episodeId)
+    .order("created_at", { ascending: false });
 
   const publishedDate = episode.published_at
     ? new Date(episode.published_at).toLocaleDateString("en-US", {
@@ -193,6 +200,107 @@ export default async function EpisodeDetailPage({
         </Section>
       )}
 
+      {/* Processing History */}
+      <Section title="Processing History">
+        {/* Cost summary */}
+        {(episode.input_tokens || episode.output_tokens || episode.processing_cost || episode.processing_duration_ms) && (
+          <div className="mb-4 flex flex-wrap gap-4 rounded-lg bg-zinc-50 px-4 py-3 text-sm">
+            {episode.input_tokens != null && episode.input_tokens > 0 && (
+              <div>
+                <span className="text-zinc-400">Input:</span>{" "}
+                <span className="font-medium text-zinc-700">{formatTokens(episode.input_tokens)} tokens</span>
+              </div>
+            )}
+            {episode.output_tokens != null && episode.output_tokens > 0 && (
+              <div>
+                <span className="text-zinc-400">Output:</span>{" "}
+                <span className="font-medium text-zinc-700">{formatTokens(episode.output_tokens)} tokens</span>
+              </div>
+            )}
+            {episode.processing_cost != null && episode.processing_cost > 0 && (
+              <div>
+                <span className="text-zinc-400">Cost:</span>{" "}
+                <span className="font-medium text-green-700">{formatCost(episode.processing_cost)}</span>
+              </div>
+            )}
+            {episode.processing_duration_ms != null && episode.processing_duration_ms > 0 && (
+              <div>
+                <span className="text-zinc-400">Duration:</span>{" "}
+                <span className="font-medium text-zinc-700">
+                  {episode.processing_duration_ms < 1000
+                    ? `${episode.processing_duration_ms}ms`
+                    : episode.processing_duration_ms < 60000
+                      ? `${(episode.processing_duration_ms / 1000).toFixed(1)}s`
+                      : `${Math.floor(episode.processing_duration_ms / 60000)}m ${Math.floor((episode.processing_duration_ms % 60000) / 1000)}s`}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Audit timeline */}
+        {auditLog && auditLog.length > 0 ? (
+          <div className="overflow-hidden rounded border border-zinc-200">
+            <table className="w-full text-xs">
+              <thead className="border-b bg-zinc-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-zinc-600">Timestamp</th>
+                  <th className="px-3 py-2 text-left font-medium text-zinc-600">Event</th>
+                  <th className="px-3 py-2 text-left font-medium text-zinc-600">Model</th>
+                  <th className="px-3 py-2 text-right font-medium text-zinc-600">Tokens</th>
+                  <th className="px-3 py-2 text-right font-medium text-zinc-600">Cost</th>
+                  <th className="px-3 py-2 text-right font-medium text-zinc-600">Duration</th>
+                  <th className="px-3 py-2 text-left font-medium text-zinc-600">Error</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {auditLog.map((entry: Record<string, unknown>, idx: number) => (
+                  <tr key={idx} className="hover:bg-zinc-50">
+                    <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                      {entry.created_at
+                        ? new Date(entry.created_at as string).toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })
+                        : "\u2014"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <AuditEventBadge event={entry.event_type as string} />
+                    </td>
+                    <td className="px-3 py-2 text-zinc-500">
+                      {(entry.model as string) || "\u2014"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-zinc-500 tabular-nums">
+                      {(entry.input_tokens as number) || (entry.output_tokens as number)
+                        ? `${formatTokens((entry.input_tokens as number) || 0)} / ${formatTokens((entry.output_tokens as number) || 0)}`
+                        : "\u2014"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-zinc-500 tabular-nums">
+                      {(entry.cost as number) ? formatCost(entry.cost as number) : "\u2014"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-zinc-500 tabular-nums">
+                      {(entry.duration_ms as number)
+                        ? (entry.duration_ms as number) < 1000
+                          ? `${entry.duration_ms}ms`
+                          : `${((entry.duration_ms as number) / 1000).toFixed(1)}s`
+                        : "\u2014"}
+                    </td>
+                    <td className="max-w-[200px] truncate px-3 py-2 text-red-600" title={(entry.error_message as string) || ""}>
+                      {(entry.error_message as string) || "\u2014"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="py-4 text-center text-sm text-zinc-400">No processing history available.</p>
+        )}
+      </Section>
+
       {/* Transcript */}
       <div className="mb-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">Full Transcript</h2>
@@ -223,5 +331,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">{title}</h2>
       {children}
     </div>
+  );
+}
+
+function AuditEventBadge({ event }: { event: string }) {
+  const styles: Record<string, string> = {
+    processing_started: "bg-blue-100 text-blue-700",
+    ai_call_completed: "bg-green-100 text-green-700",
+    processing_completed: "bg-green-100 text-green-700",
+    processing_failed: "bg-red-100 text-red-700",
+    processing_cancelled: "bg-amber-100 text-amber-700",
+  };
+
+  const label = event
+    ? event.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Unknown";
+
+  return (
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${styles[event] || "bg-zinc-100 text-zinc-600"}`}
+    >
+      {label}
+    </span>
   );
 }

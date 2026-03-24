@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatCost } from "@/lib/ai/cost";
 
 interface Episode {
   id: string;
@@ -21,6 +22,9 @@ interface Episode {
   summary: string | null;
   ai_model_used: string | null;
   content_type: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  processing_cost: number | null;
 }
 
 interface Props {
@@ -677,8 +681,15 @@ export function WorkflowPanelInner({
           {/* Episode AI processing status table */}
           {episodes.length > 0 && (() => {
             const episodesOnly = episodes.filter((e) => e.content_type !== "short");
+            const totalCost = episodesOnly.reduce((sum, ep) => sum + (ep.processing_cost || 0), 0);
             return (
               <div className="mt-2">
+                {totalCost > 0 && (
+                  <div className="mb-2 text-sm">
+                    <span className="text-zinc-400">Total cost:</span>{" "}
+                    <span className="font-medium text-zinc-700">{formatCost(totalCost)}</span>
+                  </div>
+                )}
                 <div className="max-h-80 overflow-y-auto rounded border border-zinc-200">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 border-b bg-zinc-50">
@@ -688,6 +699,7 @@ export function WorkflowPanelInner({
                         <th className="px-3 py-2 text-right font-medium">Duration</th>
                         <th className="px-3 py-2 text-center font-medium">Transcript</th>
                         <th className="px-3 py-2 text-center font-medium">AI Status</th>
+                        <th className="px-3 py-2 text-right font-medium">Cost</th>
                         <th className="px-3 py-2 text-left font-medium">Summary</th>
                       </tr>
                     </thead>
@@ -719,6 +731,9 @@ export function WorkflowPanelInner({
                           </td>
                           <td className="px-3 py-2 text-center">
                             <MiniStatus status={ep.processing_status} />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right text-zinc-500 tabular-nums">
+                            {ep.processing_cost ? formatCost(ep.processing_cost) : "\u2014"}
                           </td>
                           <td className="max-w-[200px] truncate px-3 py-2 text-zinc-500" title={ep.summary || ""}>
                             {ep.summary ? (

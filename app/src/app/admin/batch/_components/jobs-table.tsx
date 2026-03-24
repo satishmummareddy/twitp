@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatCost, formatTokens } from "@/lib/ai/cost";
 
 interface Job {
   id: string;
@@ -14,6 +15,9 @@ interface Job {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  total_cost: number | null;
 }
 
 export function JobsTable({ showNames }: { showNames: Record<string, string> }) {
@@ -145,6 +149,8 @@ export function JobsTable({ showNames }: { showNames: Record<string, string> }) 
                 <th className="px-4 py-2.5 text-left font-medium text-zinc-600">Progress</th>
                 <th className="px-4 py-2.5 text-left font-medium text-zinc-600">Started</th>
                 <th className="px-4 py-2.5 text-left font-medium text-zinc-600">Duration</th>
+                <th className="px-4 py-2.5 text-left font-medium text-zinc-600">Tokens</th>
+                <th className="px-4 py-2.5 text-left font-medium text-zinc-600">Cost</th>
                 <th className="px-4 py-2.5 text-left font-medium text-zinc-600">Error</th>
               </tr>
             </thead>
@@ -189,6 +195,14 @@ export function JobsTable({ showNames }: { showNames: Record<string, string> }) 
                   </td>
                   <td className="px-4 py-2.5 text-xs text-zinc-500 tabular-nums">
                     {duration(job.started_at || job.created_at, job.completed_at)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-xs text-zinc-500 tabular-nums">
+                    {job.total_input_tokens || job.total_output_tokens
+                      ? `${formatTokens(job.total_input_tokens || 0)} in / ${formatTokens(job.total_output_tokens || 0)} out`
+                      : "\u2014"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-xs text-zinc-500 tabular-nums">
+                    {job.total_cost ? formatCost(job.total_cost) : "\u2014"}
                   </td>
                   <td className="max-w-[200px] truncate px-4 py-2.5 text-xs text-red-600">
                     {job.error_message || "—"}
