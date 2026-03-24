@@ -67,42 +67,11 @@ export function EpisodeCard({
 
   return (
     <article className="rounded-lg border border-zinc-200 transition-shadow hover:shadow-md dark:border-zinc-800">
-      {/* Header: show badge, guest, title, meta + thumbnail */}
+      {/* Header: title, show, guest, meta + thumbnail */}
       <div className="flex items-start gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
         <div className="min-w-0 flex-1">
-          {/* Show badge + date + duration */}
-          <div className="flex flex-wrap items-center gap-2">
-            {!hideShowName && (
-              <Link href={`/shows/${showSlug}`}>
-                <span
-                  className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${showColor}`}
-                >
-                  {showName}
-                </span>
-              </Link>
-            )}
-            <span className="text-xs text-zinc-400">
-              {formatDate(episode.published_at || episode.created_at)}
-            </span>
-            {episode.duration_display && (
-              <>
-                <span className="text-zinc-300 dark:text-zinc-600">&middot;</span>
-                <span className="text-xs text-zinc-400">
-                  {episode.duration_display}
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* Guest name */}
-          {episode.guest_name && (
-            <div className="mt-1 text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              {episode.guest_name}
-            </div>
-          )}
-
-          {/* Title */}
-          <h3 className="mt-0.5 text-sm font-medium leading-snug text-zinc-600 dark:text-zinc-400">
+          {/* Episode title */}
+          <h3 className="text-base font-semibold leading-snug text-zinc-900 dark:text-zinc-100">
             {episode.youtube_url ? (
               <a
                 href={episode.youtube_url}
@@ -116,9 +85,40 @@ export function EpisodeCard({
               episode.title
             )}
           </h3>
+
+          {/* Show name + Guest name */}
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {!hideShowName && (
+              <Link href={`/shows/${showSlug}`}>
+                <span
+                  className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold ${showColor}`}
+                >
+                  {showName}
+                </span>
+              </Link>
+            )}
+            {episode.guest_name && (
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {episode.guest_name}
+              </span>
+            )}
+          </div>
+
+          {/* Date + duration */}
+          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+            <span>
+              {formatDate(episode.published_at || episode.created_at)}
+            </span>
+            {episode.duration_display && (
+              <>
+                <span className="text-zinc-300 dark:text-zinc-600">&middot;</span>
+                <span>{episode.duration_display}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Thumbnail — same height as the header text block */}
+        {/* Thumbnail */}
         {episode.thumbnail_url && (
           <a
             href={episode.youtube_url || "#"}
