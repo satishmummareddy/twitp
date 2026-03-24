@@ -46,7 +46,7 @@ export default async function TopicPage({
   const { data: episodes } = await supabase
     .from("episodes")
     .select(
-      `id, title, slug, guest_name, summary, youtube_url, duration_display, published_at, created_at,
+      `id, title, slug, guest_name, summary, youtube_url, thumbnail_url, duration_display, published_at, created_at,
        shows(name, slug),
        insights(position, content)`
     )
