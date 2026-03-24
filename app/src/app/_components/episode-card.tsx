@@ -66,32 +66,11 @@ export function EpisodeCard({
   const showColor = getShowColor(showName);
 
   return (
-    <article className="overflow-hidden rounded-lg border border-zinc-200 transition-shadow hover:shadow-md dark:border-zinc-800">
-      <div className="flex">
-        {/* Thumbnail */}
-        {episode.thumbnail_url && (
-          <div className="hidden sm:block sm:w-44 md:w-52 shrink-0">
-            <a
-              href={episode.youtube_url || "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block h-full"
-            >
-              <Image
-                src={episode.thumbnail_url}
-                alt={episode.guest_name || episode.title}
-                width={480}
-                height={360}
-                className="h-full w-full object-cover"
-                unoptimized
-              />
-            </a>
-          </div>
-        )}
-
-        {/* Content */}
-        <div className="flex-1 p-4 sm:p-5">
-          {/* Top row: show badge + meta */}
+    <article className="rounded-lg border border-zinc-200 transition-shadow hover:shadow-md dark:border-zinc-800">
+      {/* Header: show badge, guest, title, meta + thumbnail */}
+      <div className="flex items-start gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+        <div className="min-w-0 flex-1">
+          {/* Show badge + date + duration */}
           <div className="flex flex-wrap items-center gap-2">
             {!hideShowName && (
               <Link href={`/shows/${showSlug}`}>
@@ -117,13 +96,13 @@ export function EpisodeCard({
 
           {/* Guest name */}
           {episode.guest_name && (
-            <div className="mt-1.5 text-sm font-bold text-zinc-900 dark:text-zinc-100">
+            <div className="mt-1 text-sm font-bold text-zinc-900 dark:text-zinc-100">
               {episode.guest_name}
             </div>
           )}
 
           {/* Title */}
-          <h3 className="mt-0.5 text-sm font-medium leading-snug text-zinc-700 dark:text-zinc-300">
+          <h3 className="mt-0.5 text-sm font-medium leading-snug text-zinc-600 dark:text-zinc-400">
             {episode.youtube_url ? (
               <a
                 href={episode.youtube_url}
@@ -137,31 +116,51 @@ export function EpisodeCard({
               episode.title
             )}
           </h3>
-
-          {/* Summary */}
-          {episode.summary && (
-            <p className="mt-1.5 text-xs text-zinc-500 line-clamp-2">
-              {episode.summary}
-            </p>
-          )}
-
-          {/* Insights */}
-          {episode.insights && episode.insights.length > 0 && (
-            <ul className="mt-3 space-y-1">
-              {episode.insights.map((insight) => (
-                <li
-                  key={insight.position}
-                  className="flex gap-2 text-sm text-zinc-700 dark:text-zinc-300"
-                >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                    {insight.position}
-                  </span>
-                  <span>{insight.content}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
+
+        {/* Thumbnail — same height as the header text block */}
+        {episode.thumbnail_url && (
+          <a
+            href={episode.youtube_url || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0"
+          >
+            <Image
+              src={episode.thumbnail_url}
+              alt={episode.guest_name || episode.title}
+              width={96}
+              height={72}
+              className="rounded object-cover"
+              unoptimized
+            />
+          </a>
+        )}
+      </div>
+
+      {/* Details: summary + insights */}
+      <div className="px-4 py-3">
+        {episode.summary && (
+          <p className="text-xs text-zinc-500 line-clamp-2">
+            {episode.summary}
+          </p>
+        )}
+
+        {episode.insights && episode.insights.length > 0 && (
+          <ul className="mt-2.5 space-y-1">
+            {episode.insights.map((insight) => (
+              <li
+                key={insight.position}
+                className="flex gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+              >
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                  {insight.position}
+                </span>
+                <span>{insight.content}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </article>
   );
