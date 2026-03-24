@@ -147,23 +147,64 @@ export function EpisodeCard({
         )}
 
         {episode.insights && episode.insights.length > 0 && (
-          <ul className="mt-2.5 space-y-1">
-            {episode.insights.map((insight) => (
-              <li
-                key={insight.position}
-                className="flex gap-2 text-sm text-zinc-700 dark:text-zinc-300"
-              >
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                  {insight.position}
-                </span>
-                <span>{insight.content}</span>
-              </li>
-            ))}
+          <ul className="mt-2.5 space-y-2">
+            {episode.insights.map((insight) => {
+              const parsed = parseInsightContent(insight.content);
+              return (
+                <li
+                  key={insight.position}
+                  className="flex gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+                >
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    {insight.position}
+                  </span>
+                  {parsed.heading ? (
+                    <div className="min-w-0">
+                      <span className="font-semibold">{parsed.heading}</span>
+                      {parsed.summary && (
+                        <span className="text-zinc-500"> — {parsed.summary}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <span>{insight.content}</span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
     </article>
   );
+}
+
+/**
+ * Parse insight content — handles both plain text and JSON objects.
+ * JSON format: {"heading": "...", "summary": "...", "explanation": "...", ...}
+ */
+function parseInsightContent(content: string): {
+  heading: string | null;
+  summary: string | null;
+  explanation: string | null;
+} {
+  if (typeof content !== "string") return { heading: null, summary: null, explanation: null };
+
+  // Try parsing as JSON
+  try {
+    const trimmed = content.trim();
+    if (trimmed.startsWith("{")) {
+      const parsed = JSON.parse(trimmed);
+      return {
+        heading: (parsed.heading || "").replace(/\*\*/g, "").trim() || null,
+        summary: parsed.summary || null,
+        explanation: parsed.explanation || null,
+      };
+    }
+  } catch {
+    // Not JSON — treat as plain text
+  }
+
+  return { heading: null, summary: null, explanation: null };
 }
 
 export function groupByWeek(

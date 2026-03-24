@@ -6,6 +6,37 @@ import { formatCost, formatTokens } from "@/lib/ai/cost";
 
 export const revalidate = 0;
 
+function parseInsight(content: unknown): {
+  heading: string | null;
+  summary: string | null;
+  explanation: string | null;
+} {
+  if (typeof content === "object" && content !== null) {
+    const obj = content as Record<string, string>;
+    return {
+      heading: (obj.heading || "").replace(/\*\*/g, "").trim() || null,
+      summary: obj.summary || null,
+      explanation: obj.explanation || null,
+    };
+  }
+  if (typeof content === "string") {
+    try {
+      const trimmed = content.trim();
+      if (trimmed.startsWith("{")) {
+        const parsed = JSON.parse(trimmed);
+        return {
+          heading: (parsed.heading || "").replace(/\*\*/g, "").trim() || null,
+          summary: parsed.summary || null,
+          explanation: parsed.explanation || null,
+        };
+      }
+    } catch {
+      // Not JSON
+    }
+  }
+  return { heading: null, summary: null, explanation: null };
+}
+
 export default async function EpisodeDetailPage({
   params,
 }: {
@@ -136,15 +167,34 @@ export default async function EpisodeDetailPage({
       {/* Insights */}
       {insights && insights.length > 0 && (
         <Section title="Key Insights">
-          <ol className="space-y-2">
-            {insights.map((i: { position: number; content: unknown }) => (
-              <li key={i.position} className="flex gap-3 text-sm">
-                <span className="flex-shrink-0 text-zinc-400">{i.position}.</span>
-                <span className="text-zinc-700">
-                  {typeof i.content === "string" ? i.content : typeof i.content === "object" && i.content !== null ? (i.content as Record<string, string>).heading || (i.content as Record<string, string>).summary || JSON.stringify(i.content) : String(i.content)}
-                </span>
-              </li>
-            ))}
+          <ol className="space-y-4">
+            {insights.map((i: { position: number; content: unknown }) => {
+              const parsed = parseInsight(i.content);
+              return (
+                <li key={i.position} className="rounded-lg border border-zinc-100 bg-zinc-50/50 px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-600">
+                      {i.position}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {parsed.heading ? (
+                        <>
+                          <div className="font-semibold text-zinc-900">{parsed.heading}</div>
+                          {parsed.summary && (
+                            <div className="mt-1 text-sm text-zinc-600">{parsed.summary}</div>
+                          )}
+                          {parsed.explanation && (
+                            <div className="mt-2 text-sm leading-relaxed text-zinc-500">{parsed.explanation}</div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-sm text-zinc-700">{String(i.content)}</div>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         </Section>
       )}
