@@ -195,7 +195,7 @@ function parseInsightContent(content: string): {
     if (trimmed.startsWith("{")) {
       const parsed = JSON.parse(trimmed);
       return {
-        heading: (parsed.heading || parsed.title || "").replace(/\*\*/g, "").trim() || null,
+        heading: (parsed.heading || parsed.title || parsed.insight || "").replace(/\*\*/g, "").trim() || null,
         summary: parsed.summary || null,
         explanation: parsed.explanation || null,
       };

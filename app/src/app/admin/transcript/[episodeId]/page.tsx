@@ -13,7 +13,7 @@ function parseInsight(content: unknown): {
 } {
   // Helper to extract fields from an object (handles different field names)
   function extract(obj: Record<string, string>) {
-    const heading = (obj.heading || obj.title || "").replace(/\*\*/g, "").trim() || null;
+    const heading = (obj.heading || obj.title || obj.insight || "").replace(/\*\*/g, "").trim() || null;
     const summary = obj.summary || null;
     const explanation = obj.explanation || null;
     return { heading, summary, explanation };
