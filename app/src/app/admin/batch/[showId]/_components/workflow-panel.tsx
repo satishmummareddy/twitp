@@ -75,20 +75,22 @@ export function WorkflowPanelInner({
   const fetchEpisodes = useCallback(async () => {
     setLoading(true);
     try {
+      // Fetch all episodes (including shorts) for Step 1 display
       const res = await fetch(`/api/admin/shows/${showId}/episodes`);
       const data = await res.json();
-      setEpisodes(data.episodes || []);
+      const allEps = data.episodes || [];
+      setEpisodes(allEps);
 
-      // Update stats from fetched data — use episode count (not shorts) for status comparisons
-      const eps = data.episodes || [];
-      const episodesOnly = eps.filter((e: Episode) => e.content_type !== "short");
+      // Update stats from fetched data — episodes only (not shorts)
+      const episodesOnly = allEps.filter((e: Episode) => e.content_type === "episode");
+      const shortsOnly = allEps.filter((e: Episode) => e.content_type === "short");
       setStats({
-        total: eps.length,
+        total: allEps.length,
         episodeCount: episodesOnly.length,
         withTranscript: episodesOnly.filter((e: Episode) => e.has_transcript).length,
         completed: episodesOnly.filter((e: Episode) => e.processing_status === "completed").length,
         failed: episodesOnly.filter((e: Episode) => e.processing_status === "failed").length,
-        pending: episodesOnly.filter((e: Episode) => e.processing_status === "pending").length,
+        pending: episodesOnly.filter((e: Episode) => e.processing_status === "pending" || e.processing_status === "processing").length,
       });
     } catch {
       /* ignore */

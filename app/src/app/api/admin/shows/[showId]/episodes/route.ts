@@ -12,15 +12,25 @@ export async function GET(
   }
 
   const { showId } = await params;
+  const contentType = request.nextUrl.searchParams.get("content_type");
   const supabase = createAdminClient();
 
-  const { data: episodes, error } = await supabase
+  let query = supabase
     .from("episodes")
     .select(
       "id, title, slug, guest_name, published_at, duration_display, duration_seconds, view_count, like_count, thumbnail_url, youtube_url, processing_status, processing_error, transcript_text, summary, ai_model_used, content_type, input_tokens, output_tokens, processing_cost"
     )
     .eq("show_id", showId)
-    .order("published_at", { ascending: false });
+    .order("published_at", { ascending: false, nullsFirst: false });
+
+  if (contentType) {
+    query = query.eq("content_type", contentType);
+  }
+
+  // Supabase default limit is 1000 — fetch up to 2000 for large catalogs
+  query = query.range(0, 1999);
+
+  const { data: episodes, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
