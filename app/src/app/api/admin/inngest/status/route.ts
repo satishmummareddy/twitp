@@ -10,6 +10,42 @@ export async function GET() {
 
   const supabase = createAdminClient();
 
+  // Auto-cleanup: mark stale "running" jobs (>15 min old) as completed or failed
+  const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data: staleJobs } = await supabase
+    .from("processing_jobs")
+    .select("id, progress_current, progress_total, show_id")
+    .eq("status", "running")
+    .lt("created_at", staleThreshold);
+
+  if (staleJobs && staleJobs.length > 0) {
+    for (const stale of staleJobs) {
+      if (stale.progress_current >= stale.progress_total && stale.progress_total > 0) {
+        // Job actually finished but status wasn't updated
+        await supabase
+          .from("processing_jobs")
+          .update({ status: "completed", completed_at: new Date().toISOString() })
+          .eq("id", stale.id);
+      } else {
+        // Job stalled — mark as failed
+        await supabase
+          .from("processing_jobs")
+          .update({
+            status: "failed",
+            error_message: "Stale — timed out (auto-detected)",
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", stale.id);
+        // Reset stuck "processing" episodes
+        await supabase
+          .from("episodes")
+          .update({ processing_status: "pending", processing_error: null })
+          .eq("show_id", stale.show_id)
+          .eq("processing_status", "processing");
+      }
+    }
+  }
+
   // Get recent jobs (last 20)
   const { data: jobs } = await supabase
     .from("processing_jobs")
