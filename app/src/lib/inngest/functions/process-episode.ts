@@ -190,10 +190,20 @@ export const processEpisode = inngest.createFunction(
     const aiResult: AICallResult = await step.run(
       "extract-insights",
       async () => {
-        const prompt = promptConfig.template
+        let prompt = promptConfig.template
           .replace("{show_name}", showName)
           .replace("{episode_title}", episodeData.title)
           .replace("{transcript}", episodeData.transcript_text!);
+
+        // Auto-append transcript if template didn't include {transcript}
+        if (!promptConfig.template.includes("{transcript}")) {
+          prompt += `\n\n**Show:** ${showName}\n**Episode:** ${episodeData.title}\n\n**Transcript:**\n${episodeData.transcript_text!}`;
+        }
+
+        // Auto-append JSON format instructions if not already present
+        if (!prompt.toLowerCase().includes("json")) {
+          prompt += `\n\nRespond with valid JSON only, in this format:\n{"guest_name": "...", "summary": "...", "insights": ["insight1", "insight2", ...], "topics": ["topic-slug-1", "topic-slug-2", ...]}`;
+        }
 
         const apiKey =
           promptConfig.model_provider === "anthropic"
