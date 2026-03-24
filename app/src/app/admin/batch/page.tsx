@@ -251,22 +251,28 @@ function getShowStatus(
   if (stats.total === 0) return "Not Started";
   if (stats.failed > 0) return "Has Failures";
 
-  // If a job is actively running, show which stage
-  if (hasRunningJob) {
-    if (runningJobType === "discover_episodes") return "Discovering...";
-    if (runningJobType === "fetch_transcripts") return "Fetching Transcripts...";
-    if (runningJobType === "inngest_batch") return "AI Processing...";
-    return "Processing...";
-  }
-
+  // Determine completed stage first, then overlay active processing
   // All episodes have AI summaries
   if (stats.completed === stats.total) return "Summaries Ready";
-  // Some AI processing done
+
+  // Check if actively processing AI
+  if (hasRunningJob && runningJobType === "inngest_batch") return "AI Processing...";
   if (stats.completed > 0 && stats.completed < stats.total) return "AI Processing...";
-  // All episodes have transcripts but none processed
-  if (stats.hasTranscript === stats.total) return "Transcripts Ready";
-  // Some transcripts fetched
+
+  // All episodes have transcripts
+  if (stats.hasTranscript === stats.total) {
+    return "Transcripts Ready";
+  }
+
+  // Check if actively fetching transcripts
+  if (hasRunningJob && runningJobType === "fetch_transcripts" && stats.hasTranscript < stats.total) {
+    return "Fetching Transcripts...";
+  }
   if (stats.hasTranscript > 0 && stats.hasTranscript < stats.total) return "Fetching Transcripts...";
+
+  // Check if actively discovering
+  if (hasRunningJob && runningJobType === "discover_episodes") return "Discovering...";
+
   // Episodes discovered but no transcripts yet
   if (stats.total > 0 && stats.hasTranscript === 0) return "Episodes Ready";
   return "Not Started";
