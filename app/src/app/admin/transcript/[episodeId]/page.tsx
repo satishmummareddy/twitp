@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import { formatCost, formatTokens } from "@/lib/ai/cost";
+import { VersionTabs } from "./_components/version-tabs";
 
 export const revalidate = 0;
 
@@ -79,6 +80,38 @@ export default async function EpisodeDetailPage({
     .from("episode_topics")
     .select("topic_id, topics(name, slug)")
     .eq("episode_id", episodeId);
+
+  // Fetch all versions for this episode
+  const { data: versions } = await supabase
+    .from("episode_versions")
+    .select("*, prompts(name, is_active)")
+    .eq("episode_id", episodeId)
+    .order("created_at", { ascending: false });
+
+  // Build version data for the tabs
+  const versionTabData = (versions || []).map((v: Record<string, unknown>) => {
+    const prompt = v.prompts as { name: string; is_active: boolean } | null;
+    return {
+      id: v.id as string,
+      prompt_id: v.prompt_id as string,
+      prompt_name: prompt?.name || "Unknown",
+      is_active: prompt?.is_active || false,
+      guest_name: v.guest_name as string | null,
+      summary: v.summary as string | null,
+      insights: (v.insights || []) as unknown[],
+      topics: (v.topics || []) as unknown[],
+      model_provider: v.model_provider as string,
+      model_name: v.model_name as string,
+      input_tokens: v.input_tokens as number | null,
+      output_tokens: v.output_tokens as number | null,
+      processing_cost: v.processing_cost as number | null,
+      processing_duration_ms: v.processing_duration_ms as number | null,
+      status: v.status as string,
+      error_message: v.error_message as string | null,
+      created_at: v.created_at as string,
+      updated_at: v.updated_at as string,
+    };
+  });
 
   const { data: auditLog } = await supabase
     .from("processing_audit_log")
@@ -162,42 +195,23 @@ export default async function EpisodeDetailPage({
         {episode.transcript_lang && <Pill label="Lang" value={episode.transcript_lang} color="zinc" />}
       </div>
 
-      {/* Insights */}
-      {insights && insights.length > 0 && (
-        <Section title="Key Insights">
-          <ol className="space-y-4">
-            {insights.map((i: { position: number; content: unknown }) => {
-              const parsed = parseInsight(i.content);
-              return (
-                <li key={i.position} className="rounded-lg border border-zinc-100 bg-zinc-50/50 px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-600">
-                      {i.position}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      {parsed.heading ? (
-                        <>
-                          <div className="font-semibold text-zinc-900">{parsed.heading}</div>
-                          {parsed.summary && (
-                            <div className="mt-1 text-sm text-zinc-600">{parsed.summary}</div>
-                          )}
-                          {parsed.explanation && (
-                            <div className="mt-2 text-sm leading-relaxed text-zinc-500">{parsed.explanation}</div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="text-sm text-zinc-700">{String(i.content)}</div>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </Section>
-      )}
+      {/* AI Generated Content — Version Tabs */}
+      <Section title="AI Generated Content">
+        <VersionTabs
+          versions={versionTabData}
+          legacy={{
+            summary: episode.summary,
+            guest_name: episode.guest_name,
+            insights: (insights || []).map((i: { position: number; content: unknown }) => ({
+              position: i.position,
+              content: i.content,
+            })),
+            model_used: episode.ai_model_used,
+          }}
+        />
+      </Section>
 
-      {/* Topics */}
+      {/* Topics (from legacy) */}
       {episodeTopics && episodeTopics.length > 0 && (
         <div className="mb-6">
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">Topics</h2>
@@ -239,13 +253,6 @@ export default async function EpisodeDetailPage({
           <h2 className="mb-1 text-sm font-semibold text-red-700">Processing Error</h2>
           <pre className="whitespace-pre-wrap text-xs text-red-600">{episode.processing_error}</pre>
         </div>
-      )}
-
-      {/* Summary */}
-      {episode.summary && (
-        <Section title="Summary">
-          <p className="text-sm leading-relaxed text-zinc-700">{episode.summary}</p>
-        </Section>
       )}
 
       {/* Processing History */}
