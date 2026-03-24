@@ -13,7 +13,8 @@ export interface EpisodeData {
   published_at: string | null;
   created_at?: string;
   shows: { name: string; slug: string };
-  insights: { position: number; content: string }[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  insights: { position: number; content: any }[];
 }
 
 // Consistent colors for show name badges
