@@ -10,6 +10,7 @@ export interface PromptData {
   model_provider: string;
   model_name: string;
   is_active: boolean;
+  is_promoted: boolean;
   version: number;
   created_at: string;
 }
@@ -148,22 +149,72 @@ export function PromptEditor({
       </div>
 
       {/* Prompt list */}
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-2">
         {prompts.map((p) => (
-          <button
+          <div
             key={p.id}
-            onClick={() => loadPrompt(p)}
-            className={`rounded border px-3 py-1.5 text-sm ${
+            className={`flex items-center gap-2 rounded border px-3 py-2 ${
               selectedPrompt?.id === p.id
-                ? "border-blue-500 bg-blue-50 text-blue-700"
-                : "border-zinc-300 hover:bg-zinc-50"
+                ? "border-blue-500 bg-blue-50"
+                : "border-zinc-200 hover:bg-zinc-50"
             }`}
           >
-            {p.name}
-            {p.is_active && (
-              <span className="ml-1 text-xs text-green-600">(active)</span>
-            )}
-          </button>
+            <button
+              onClick={() => loadPrompt(p)}
+              className="flex-1 text-left text-sm"
+            >
+              <span className="font-medium">{p.name}</span>
+              <span className="ml-2 text-xs text-zinc-400">
+                {p.model_provider}/{p.model_name}
+              </span>
+            </button>
+            <div className="flex items-center gap-1.5">
+              {p.is_active && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                  Active
+                </span>
+              )}
+              {p.is_promoted && (
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                  Promoted
+                </span>
+              )}
+              {!p.is_active && (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await fetch("/api/admin/prompts/activate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ promptId: p.id }),
+                    });
+                    onPromptsChanged();
+                  }}
+                  className="rounded bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-600 hover:bg-green-100"
+                >
+                  Set Active
+                </button>
+              )}
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await fetch("/api/admin/prompts/promote", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ promptId: p.id, promoted: !p.is_promoted }),
+                  });
+                  onPromptsChanged();
+                }}
+                className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                  p.is_promoted
+                    ? "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                    : "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                }`}
+              >
+                {p.is_promoted ? "Demote" : "Promote"}
+              </button>
+            </div>
+          </div>
         ))}
       </div>
 
