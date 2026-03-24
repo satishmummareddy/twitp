@@ -11,24 +11,22 @@ function parseInsight(content: unknown): {
   summary: string | null;
   explanation: string | null;
 } {
+  // Helper to extract fields from an object (handles different field names)
+  function extract(obj: Record<string, string>) {
+    const heading = (obj.heading || obj.title || "").replace(/\*\*/g, "").trim() || null;
+    const summary = obj.summary || null;
+    const explanation = obj.explanation || null;
+    return { heading, summary, explanation };
+  }
+
   if (typeof content === "object" && content !== null) {
-    const obj = content as Record<string, string>;
-    return {
-      heading: (obj.heading || "").replace(/\*\*/g, "").trim() || null,
-      summary: obj.summary || null,
-      explanation: obj.explanation || null,
-    };
+    return extract(content as Record<string, string>);
   }
   if (typeof content === "string") {
     try {
       const trimmed = content.trim();
       if (trimmed.startsWith("{")) {
-        const parsed = JSON.parse(trimmed);
-        return {
-          heading: (parsed.heading || "").replace(/\*\*/g, "").trim() || null,
-          summary: parsed.summary || null,
-          explanation: parsed.explanation || null,
-        };
+        return extract(JSON.parse(trimmed));
       }
     } catch {
       // Not JSON
