@@ -30,32 +30,36 @@ export default async function BatchOverviewPage() {
     const { count: total } = await supabase
       .from("episodes")
       .select("id", { count: "exact", head: true })
-      .eq("show_id", show.id);
+      .eq("show_id", show.id)
+      .eq("content_type", "episode");
 
     const { count: completed } = await supabase
       .from("episodes")
       .select("id", { count: "exact", head: true })
       .eq("show_id", show.id)
+      .eq("content_type", "episode")
       .eq("processing_status", "completed");
 
     const { count: failed } = await supabase
       .from("episodes")
       .select("id", { count: "exact", head: true })
       .eq("show_id", show.id)
+      .eq("content_type", "episode")
       .eq("processing_status", "failed");
 
     const { count: pending } = await supabase
       .from("episodes")
       .select("id", { count: "exact", head: true })
       .eq("show_id", show.id)
-      .eq("processing_status", "pending");
+      .eq("content_type", "episode")
+      .in("processing_status", ["pending", "processing"]);
 
     showStats[show.id] = {
       total: total || 0,
       pending: pending || 0,
       completed: completed || 0,
       failed: failed || 0,
-      hasTranscript: 0, // TODO: count episodes with transcripts
+      hasTranscript: 0,
     };
   }
 
@@ -234,7 +238,8 @@ function getShowStatus(
   if (hasRunningJob) return "Processing";
   if (stats.total === 0) return "Not Started";
   if (stats.failed > 0) return "Has Failures";
-  if (stats.completed === stats.total) return "Completed";
-  if (stats.completed > 0 || stats.pending > 0) return "Processing";
+  if (stats.total > 0 && stats.completed === stats.total) return "Completed";
+  if (stats.completed > 0 && stats.pending > 0) return "Processing";
+  if (stats.completed > 0 && stats.pending === 0 && stats.failed === 0) return "Completed";
   return "Not Started";
 }
