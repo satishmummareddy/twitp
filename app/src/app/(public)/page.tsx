@@ -1,11 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  EpisodeCard,
-  type EpisodeData,
-  groupByWeek,
-} from "../_components/episode-card";
+import { type EpisodeData } from "../_components/episode-card";
+import { EpisodeList } from "../_components/episode-list";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 30;
 
 export default async function HomePage() {
   const supabase = createAdminClient();
@@ -19,8 +18,8 @@ export default async function HomePage() {
     )
     .eq("is_published", true)
     .eq("processing_status", "completed")
-    .order("published_at", { ascending: false })
-    .limit(50);
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .limit(PAGE_SIZE);
 
   if (!episodes || episodes.length === 0) {
     return (
@@ -38,7 +37,11 @@ export default async function HomePage() {
     ep.insights?.sort((a, b) => a.position - b.position);
   }
 
-  const weekGroups = groupByWeek(typed);
+  // Compute cursor for client-side pagination
+  const nextCursor =
+    typed.length === PAGE_SIZE
+      ? typed[typed.length - 1].published_at
+      : null;
 
   return (
     <div>
@@ -52,18 +55,7 @@ export default async function HomePage() {
         </p>
       </div>
 
-      {Array.from(weekGroups.entries()).map(([weekLabel, eps]) => (
-        <section key={weekLabel} className="mb-10">
-          <h2 className="mb-4 text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-            {weekLabel}
-          </h2>
-          <div className="space-y-4">
-            {eps.map((ep) => (
-              <EpisodeCard key={ep.id} episode={ep} />
-            ))}
-          </div>
-        </section>
-      ))}
+      <EpisodeList initialEpisodes={typed} initialCursor={nextCursor} />
     </div>
   );
 }
