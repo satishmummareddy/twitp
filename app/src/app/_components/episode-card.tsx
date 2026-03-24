@@ -166,7 +166,7 @@ export function EpisodeCard({
                       )}
                     </div>
                   ) : (
-                    <span>{insight.content}</span>
+                    <span>{typeof insight.content === "string" ? insight.content : JSON.stringify(insight.content)}</span>
                   )}
                 </li>
               );
@@ -179,26 +179,35 @@ export function EpisodeCard({
 }
 
 /**
- * Parse insight content — handles both plain text and JSON objects.
- * JSON format: {"heading": "...", "summary": "...", "explanation": "...", ...}
+ * Parse insight content — handles plain text, JSON strings, and pre-parsed objects.
+ * Supports: {"heading": "...", "summary": "...", "explanation": "...", ...}
+ * Also handles nested: {"content": {"heading": "...", ...}}
  */
-function parseInsightContent(content: string): {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseInsightContent(content: any): {
   heading: string | null;
   summary: string | null;
   explanation: string | null;
 } {
+  // Already a parsed object (from episode_versions JSONB)
+  if (typeof content === "object" && content !== null) {
+    // Handle nested: { content: { heading, summary } }
+    const obj = content.content && typeof content.content === "object" ? content.content : content;
+    return {
+      heading: (obj.heading || obj.title || obj.insight || "").replace(/\*\*/g, "").trim() || null,
+      summary: obj.summary || null,
+      explanation: obj.explanation || null,
+    };
+  }
+
   if (typeof content !== "string") return { heading: null, summary: null, explanation: null };
 
-  // Try parsing as JSON
+  // Try parsing as JSON string
   try {
     const trimmed = content.trim();
     if (trimmed.startsWith("{")) {
       const parsed = JSON.parse(trimmed);
-      return {
-        heading: (parsed.heading || parsed.title || parsed.insight || "").replace(/\*\*/g, "").trim() || null,
-        summary: parsed.summary || null,
-        explanation: parsed.explanation || null,
-      };
+      return parseInsightContent(parsed); // Recurse to handle object
     }
   } catch {
     // Not JSON — treat as plain text
