@@ -69,11 +69,46 @@ export async function GET(
 
   const transcriptIds = new Set(allTranscriptIds);
 
+  // Fetch version data: which prompts have been run for each episode
+  const allVersions: { episode_id: string; prompt_id: string; status: string; prompt_name?: string }[] = [];
+  for (let page = 0; ; page++) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const { data } = await supabase
+      .from("episode_versions")
+      .select("episode_id, prompt_id, status, prompts(name)")
+      .in("episode_id", allEpisodes.map((e) => e.id as string))
+      .range(from, to);
+
+    if (data) {
+      allVersions.push(
+        ...data.map((v: Record<string, unknown>) => ({
+          episode_id: v.episode_id as string,
+          prompt_id: v.prompt_id as string,
+          status: v.status as string,
+          prompt_name: (v.prompts as Record<string, unknown>)?.name as string || undefined,
+        }))
+      );
+    }
+
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+
+  // Group versions by episode
+  const versionsByEpisode = new Map<string, { prompt_id: string; prompt_name?: string; status: string }[]>();
+  for (const v of allVersions) {
+    const list = versionsByEpisode.get(v.episode_id) || [];
+    list.push({ prompt_id: v.prompt_id, prompt_name: v.prompt_name, status: v.status });
+    versionsByEpisode.set(v.episode_id, list);
+  }
+
   // Add computed fields
   const enriched = allEpisodes.map((ep) => ({
     ...ep,
     has_transcript: transcriptIds.has(ep.id as string),
     transcript_length: 0,
+    versions: versionsByEpisode.get(ep.id as string) || [],
   }));
 
   return NextResponse.json({ episodes: enriched });

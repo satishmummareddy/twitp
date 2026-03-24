@@ -25,6 +25,7 @@ interface Episode {
   input_tokens: number | null;
   output_tokens: number | null;
   processing_cost: number | null;
+  versions: { prompt_id: string; prompt_name?: string; status: string }[];
 }
 
 interface Props {
@@ -847,8 +848,30 @@ export function WorkflowPanelInner({
                           <td className="px-3 py-2 text-center">
                             <MiniStatus status={ep.processing_status} />
                           </td>
-                          <td className="px-3 py-2 text-center text-zinc-300">
-                            {"\u2014"}
+                          <td className="px-3 py-2">
+                            {ep.versions && ep.versions.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {ep.versions.map((v: { prompt_id: string; prompt_name?: string; status: string }) => (
+                                  <span
+                                    key={v.prompt_id}
+                                    title={`${v.prompt_name || v.prompt_id.slice(0, 8)} — ${v.status}`}
+                                    className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                      v.status === "completed"
+                                        ? "bg-green-100 text-green-700"
+                                        : v.status === "processing"
+                                          ? "bg-blue-100 text-blue-700"
+                                          : v.status === "failed"
+                                            ? "bg-red-100 text-red-700"
+                                            : "bg-zinc-100 text-zinc-500"
+                                    }`}
+                                  >
+                                    {v.prompt_name || v.prompt_id.slice(0, 6)}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-zinc-300">{"\u2014"}</span>
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-right text-zinc-500 tabular-nums">
                             {ep.processing_cost ? formatCost(ep.processing_cost) : "\u2014"}
