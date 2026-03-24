@@ -54,12 +54,20 @@ export default async function BatchOverviewPage() {
       .eq("content_type", "episode")
       .in("processing_status", ["pending", "processing"]);
 
+    const { count: hasTranscript } = await supabase
+      .from("episodes")
+      .select("id", { count: "exact", head: true })
+      .eq("show_id", show.id)
+      .eq("content_type", "episode")
+      .not("transcript_text", "is", null)
+      .neq("transcript_text", "");
+
     showStats[show.id] = {
       total: total || 0,
       pending: pending || 0,
       completed: completed || 0,
       failed: failed || 0,
-      hasTranscript: 0,
+      hasTranscript: hasTranscript || 0,
     };
   }
 
@@ -121,8 +129,8 @@ export default async function BatchOverviewPage() {
               <tbody className="divide-y divide-zinc-100">
                 {(shows || []).map((show) => {
                   const stats = showStats[show.id];
-                  const hasRunningJob = runningJobs?.some((j) => j.show_id === show.id);
-                  const status = getShowStatus(stats, hasRunningJob);
+                  const showRunningJob = runningJobs?.find((j) => j.show_id === show.id);
+                  const status = getShowStatus(stats, !!showRunningJob, showRunningJob?.job_type);
 
                   return (
                     <tr key={show.id} className="hover:bg-zinc-50">
@@ -218,9 +226,13 @@ function StatCard({
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     "Not Started": "bg-zinc-100 text-zinc-600",
-    Discovering: "bg-blue-100 text-blue-700",
-    Processing: "bg-amber-100 text-amber-700",
-    Completed: "bg-green-100 text-green-700",
+    "Episodes Ready": "bg-blue-100 text-blue-700",
+    "Transcripts Ready": "bg-indigo-100 text-indigo-700",
+    "Summaries Ready": "bg-green-100 text-green-700",
+    "Discovering...": "bg-amber-100 text-amber-700",
+    "Fetching Transcripts...": "bg-amber-100 text-amber-700",
+    "AI Processing...": "bg-amber-100 text-amber-700",
+    "Processing...": "bg-amber-100 text-amber-700",
     "Has Failures": "bg-red-100 text-red-700",
   };
 
@@ -232,14 +244,30 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function getShowStatus(
-  stats: { total: number; pending: number; completed: number; failed: number },
-  hasRunningJob?: boolean
+  stats: { total: number; pending: number; completed: number; failed: number; hasTranscript: number },
+  hasRunningJob?: boolean,
+  runningJobType?: string
 ): string {
-  if (hasRunningJob) return "Processing";
   if (stats.total === 0) return "Not Started";
   if (stats.failed > 0) return "Has Failures";
-  if (stats.total > 0 && stats.completed === stats.total) return "Completed";
-  if (stats.completed > 0 && stats.pending > 0) return "Processing";
-  if (stats.completed > 0 && stats.pending === 0 && stats.failed === 0) return "Completed";
+
+  // If a job is actively running, show which stage
+  if (hasRunningJob) {
+    if (runningJobType === "discover_episodes") return "Discovering...";
+    if (runningJobType === "fetch_transcripts") return "Fetching Transcripts...";
+    if (runningJobType === "inngest_batch") return "AI Processing...";
+    return "Processing...";
+  }
+
+  // All episodes have AI summaries
+  if (stats.completed === stats.total) return "Summaries Ready";
+  // Some AI processing done
+  if (stats.completed > 0 && stats.completed < stats.total) return "AI Processing...";
+  // All episodes have transcripts but none processed
+  if (stats.hasTranscript === stats.total) return "Transcripts Ready";
+  // Some transcripts fetched
+  if (stats.hasTranscript > 0 && stats.hasTranscript < stats.total) return "Fetching Transcripts...";
+  // Episodes discovered but no transcripts yet
+  if (stats.total > 0 && stats.hasTranscript === 0) return "Episodes Ready";
   return "Not Started";
 }
