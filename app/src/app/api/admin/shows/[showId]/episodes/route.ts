@@ -15,44 +15,65 @@ export async function GET(
   const contentType = request.nextUrl.searchParams.get("content_type");
   const supabase = createAdminClient();
 
-  // Use two queries: one for metadata (lightweight), one for transcript existence
-  let query = supabase
-    .from("episodes")
-    .select(
-      "id, title, slug, guest_name, published_at, duration_display, duration_seconds, view_count, like_count, thumbnail_url, youtube_url, processing_status, processing_error, summary, ai_model_used, content_type, input_tokens, output_tokens, processing_cost"
-    )
-    .eq("show_id", showId)
-    .order("published_at", { ascending: false, nullsFirst: false });
+  // Paginate to bypass Supabase's default 1000-row limit (PGRST_MAX_ROWS)
+  const PAGE_SIZE = 1000;
+  const allEpisodes: Record<string, unknown>[] = [];
 
-  if (contentType) {
-    query = query.eq("content_type", contentType);
+  for (let page = 0; ; page++) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    let query = supabase
+      .from("episodes")
+      .select(
+        "id, title, slug, guest_name, published_at, duration_display, duration_seconds, view_count, like_count, thumbnail_url, youtube_url, processing_status, processing_error, summary, ai_model_used, content_type, input_tokens, output_tokens, processing_cost"
+      )
+      .eq("show_id", showId)
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .range(from, to);
+
+    if (contentType) {
+      query = query.eq("content_type", contentType);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    allEpisodes.push(...(data || []));
+
+    // If we got fewer than PAGE_SIZE rows, we've fetched everything
+    if (!data || data.length < PAGE_SIZE) break;
   }
 
-  // Fetch all rows — without transcript_text, each row is tiny so 2000+ is fine
-  query = query.range(0, 4999);
+  // Paginate transcript IDs the same way
+  const allTranscriptIds: string[] = [];
+  for (let page = 0; ; page++) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
 
-  const { data: episodes, error } = await query;
+    const { data } = await supabase
+      .from("episodes")
+      .select("id")
+      .eq("show_id", showId)
+      .not("transcript_text", "is", null)
+      .neq("transcript_text", "")
+      .range(from, to);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    allTranscriptIds.push(...(data || []).map((e) => e.id));
+
+    if (!data || data.length < PAGE_SIZE) break;
   }
 
-  // Get IDs of episodes that have transcripts (separate lightweight query)
-  const { data: withTranscript } = await supabase
-    .from("episodes")
-    .select("id")
-    .eq("show_id", showId)
-    .not("transcript_text", "is", null)
-    .neq("transcript_text", "")
-    .range(0, 4999);
-
-  const transcriptIds = new Set((withTranscript || []).map((e) => e.id));
+  const transcriptIds = new Set(allTranscriptIds);
 
   // Add computed fields
-  const enriched = (episodes || []).map((ep) => ({
+  const enriched = allEpisodes.map((ep) => ({
     ...ep,
-    has_transcript: transcriptIds.has(ep.id),
-    transcript_length: 0, // Not fetched for performance
+    has_transcript: transcriptIds.has(ep.id as string),
+    transcript_length: 0,
   }));
 
   return NextResponse.json({ episodes: enriched });
