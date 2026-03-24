@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { showId, limit, forceReprocess } = await request.json();
+    const { showId, limit, forceReprocess, promptIds } = await request.json();
 
     if (!showId) {
       return NextResponse.json(
@@ -21,7 +21,6 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Verify show exists
     const { data: show } = await supabase
       .from("shows")
       .select("id, name")
@@ -39,9 +38,10 @@ export async function POST(request: NextRequest) {
         show_id: showId,
         job_type: "inngest_batch",
         status: "running",
-        progress_total: 0, // Will be updated by batch-process function
+        progress_total: 0,
         progress_current: 0,
         started_at: new Date().toISOString(),
+        config_snapshot: promptIds ? { promptIds } : null,
       })
       .select("id")
       .single();
@@ -53,7 +53,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send Inngest event to start batch processing
     await inngest.send({
       name: "batch/process.requested",
       data: {
@@ -61,6 +60,7 @@ export async function POST(request: NextRequest) {
         showId,
         limit: limit || 0,
         forceReprocess: !!forceReprocess,
+        promptIds: promptIds || [],
       },
     });
 

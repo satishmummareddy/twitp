@@ -9,7 +9,8 @@ import type { AICallResult } from "@/lib/ai/providers";
 /**
  * Per-episode processing function.
  * Each episode is processed independently with automatic retries.
- * Concurrency is controlled via processing_config.
+ * Supports versioned output — results saved to episode_versions table
+ * tagged by prompt_id, plus legacy writes to insights/episode_topics.
  */
 export const processEpisode = inngest.createFunction(
   {
@@ -18,15 +19,13 @@ export const processEpisode = inngest.createFunction(
     retries: 3,
     concurrency: [
       {
-        // Limit concurrent processing per show
         limit: 5,
         key: "event.data.showId",
       },
     ],
     triggers: [{ event: "episode/process.requested" }],
     onFailure: async ({ event, error }) => {
-      // event.data.event.data contains the original event data
-      const { episodeId, jobId } = event.data.event.data;
+      const { episodeId, jobId, promptId } = event.data.event.data;
       const supabase = createAdminClient();
 
       await supabase
@@ -37,6 +36,23 @@ export const processEpisode = inngest.createFunction(
         })
         .eq("id", episodeId);
 
+      // Mark version as failed if promptId provided
+      if (promptId) {
+        await supabase
+          .from("episode_versions")
+          .upsert(
+            {
+              episode_id: episodeId,
+              prompt_id: promptId,
+              status: "failed",
+              error_message: error.message?.slice(0, 500) || "Unknown error",
+              model_provider: "unknown",
+              model_name: "unknown",
+            },
+            { onConflict: "episode_id,prompt_id" }
+          );
+      }
+
       await logAuditEvent({
         episodeId,
         jobId,
@@ -44,8 +60,6 @@ export const processEpisode = inngest.createFunction(
         errorMessage: error.message?.slice(0, 500) || "Unknown error",
       });
 
-      // Still increment progress so job eventually completes
-      // (simplified version — just increment, no cost)
       const { data: job } = await supabase
         .from("processing_jobs")
         .select("progress_current, progress_total")
@@ -69,8 +83,14 @@ export const processEpisode = inngest.createFunction(
     },
   },
   async ({ event, step }) => {
-    const { episodeId, jobId, showName, promptConfig, forceReprocess } =
-      event.data;
+    const {
+      episodeId,
+      jobId,
+      showName,
+      promptConfig,
+      promptId,
+      forceReprocess,
+    } = event.data;
 
     // Step 0: Check if job was cancelled
     const jobCancelled = await step.run("check-job-cancelled", async () => {
@@ -91,6 +111,19 @@ export const processEpisode = inngest.createFunction(
     const shouldProcess = await step.run("check-status", async () => {
       if (forceReprocess) return true;
 
+      // Check if this specific version exists
+      if (promptId) {
+        const supabase = createAdminClient();
+        const { data: version } = await supabase
+          .from("episode_versions")
+          .select("status")
+          .eq("episode_id", episodeId)
+          .eq("prompt_id", promptId)
+          .single();
+
+        return version?.status !== "completed";
+      }
+
       const supabase = createAdminClient();
       const { data: episode } = await supabase
         .from("episodes")
@@ -102,29 +135,8 @@ export const processEpisode = inngest.createFunction(
     });
 
     if (!shouldProcess) {
-      // Still update progress for skipped episodes (no cost)
       await step.run("update-progress-skipped", async () => {
-        const supabase = createAdminClient();
-        const { data: job } = await supabase
-          .from("processing_jobs")
-          .select("progress_current, progress_total")
-          .eq("id", jobId)
-          .single();
-
-        if (!job) return;
-
-        const newProgress = (job.progress_current || 0) + 1;
-        const update: Record<string, unknown> = {
-          progress_current: newProgress,
-        };
-        if (newProgress >= job.progress_total) {
-          update.status = "completed";
-          update.completed_at = new Date().toISOString();
-        }
-        await supabase
-          .from("processing_jobs")
-          .update(update)
-          .eq("id", jobId);
+        await incrementJobProgress(jobId);
       });
       return { episodeId, status: "skipped" };
     }
@@ -136,6 +148,20 @@ export const processEpisode = inngest.createFunction(
         .from("episodes")
         .update({ processing_status: "processing" })
         .eq("id", episodeId);
+
+      // Mark version as processing
+      if (promptId) {
+        await supabase.from("episode_versions").upsert(
+          {
+            episode_id: episodeId,
+            prompt_id: promptId,
+            status: "processing",
+            model_provider: promptConfig.model_provider,
+            model_name: promptConfig.model_name,
+          },
+          { onConflict: "episode_id,prompt_id" }
+        );
+      }
 
       await logAuditEvent({
         episodeId,
@@ -195,7 +221,50 @@ export const processEpisode = inngest.createFunction(
     await step.run("save-results", async () => {
       const supabase = createAdminClient();
 
-      // Save insights
+      const episodeCost = estimateCost(
+        promptConfig.model_name,
+        aiResult.usage.input_tokens,
+        aiResult.usage.output_tokens
+      );
+
+      // Build insights JSONB
+      const insightsJson = aiResult.extraction.insights.map(
+        (content: string, index: number) => ({
+          position: index + 1,
+          content,
+        })
+      );
+
+      // Build topics JSONB (slugs)
+      const topicSlugs = aiResult.extraction.topics.map((t: string) =>
+        generateSlug(t)
+      );
+
+      // === Save to episode_versions (versioned storage) ===
+      if (promptId) {
+        await supabase.from("episode_versions").upsert(
+          {
+            episode_id: episodeId,
+            prompt_id: promptId,
+            guest_name: aiResult.extraction.guest_name,
+            summary: aiResult.extraction.summary,
+            insights: insightsJson,
+            topics: topicSlugs,
+            model_provider: promptConfig.model_provider,
+            model_name: promptConfig.model_name,
+            input_tokens: aiResult.usage.input_tokens,
+            output_tokens: aiResult.usage.output_tokens,
+            processing_cost: episodeCost,
+            processing_duration_ms: aiResult.usage.duration_ms,
+            status: "completed",
+            error_message: null,
+          },
+          { onConflict: "episode_id,prompt_id" }
+        );
+      }
+
+      // === Legacy writes (insights table + episode_topics) ===
+      // Keep these so existing public pages work during transition
       const insightRows = aiResult.extraction.insights.map(
         (content: string, index: number) => ({
           episode_id: episodeId,
@@ -237,7 +306,6 @@ export const processEpisode = inngest.createFunction(
         topicIds.push(topicId);
       }
 
-      // Save episode_topics
       await supabase
         .from("episode_topics")
         .delete()
@@ -252,14 +320,7 @@ export const processEpisode = inngest.createFunction(
         );
       }
 
-      // Calculate cost for this episode
-      const episodeCost = estimateCost(
-        promptConfig.model_name,
-        aiResult.usage.input_tokens,
-        aiResult.usage.output_tokens
-      );
-
-      // Update episode with summary, status, and cost data
+      // Update episode record
       await supabase
         .from("episodes")
         .update({
@@ -277,7 +338,6 @@ export const processEpisode = inngest.createFunction(
         })
         .eq("id", episodeId);
 
-      // Log ai_call_completed audit event
       await logAuditEvent({
         episodeId,
         jobId,
@@ -290,7 +350,6 @@ export const processEpisode = inngest.createFunction(
         durationMs: aiResult.usage.duration_ms,
       });
 
-      // Log processing_completed audit event
       await logAuditEvent({
         episodeId,
         jobId,
@@ -300,50 +359,66 @@ export const processEpisode = inngest.createFunction(
 
     // Step 6: Update job progress + cost totals
     await step.run("update-progress", async () => {
-      const supabase = createAdminClient();
-
-      // Read current job totals
-      const { data: currentJob } = await supabase
-        .from("processing_jobs")
-        .select(
-          "progress_current, progress_total, total_input_tokens, total_output_tokens, total_cost"
-        )
-        .eq("id", jobId)
-        .single();
-
-      const newProgress = (currentJob?.progress_current || 0) + 1;
-      const newInputTokens =
-        (currentJob?.total_input_tokens || 0) +
-        (aiResult.usage.input_tokens || 0);
-      const newOutputTokens =
-        (currentJob?.total_output_tokens || 0) +
-        (aiResult.usage.output_tokens || 0);
       const episodeCost = estimateCost(
         promptConfig.model_name,
         aiResult.usage.input_tokens,
         aiResult.usage.output_tokens
       );
-      const newCost =
-        parseFloat(String(currentJob?.total_cost || 0)) + episodeCost;
-
-      const update: Record<string, unknown> = {
-        progress_current: newProgress,
-        total_input_tokens: newInputTokens,
-        total_output_tokens: newOutputTokens,
-        total_cost: newCost,
-      };
-
-      if (newProgress >= (currentJob?.progress_total || 0)) {
-        update.status = "completed";
-        update.completed_at = new Date().toISOString();
-      }
-
-      await supabase
-        .from("processing_jobs")
-        .update(update)
-        .eq("id", jobId);
+      await incrementJobProgress(jobId, {
+        inputTokens: aiResult.usage.input_tokens,
+        outputTokens: aiResult.usage.output_tokens,
+        cost: episodeCost,
+        modelName: promptConfig.model_name,
+      });
     });
 
     return { episodeId, status: "completed" };
   }
 );
+
+/**
+ * Increment the progress counter on a processing job.
+ */
+async function incrementJobProgress(
+  jobId: string,
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cost: number;
+    modelName: string;
+  }
+) {
+  const supabase = createAdminClient();
+
+  const { data: currentJob } = await supabase
+    .from("processing_jobs")
+    .select(
+      "progress_current, progress_total, total_input_tokens, total_output_tokens, total_cost"
+    )
+    .eq("id", jobId)
+    .single();
+
+  if (!currentJob) return;
+
+  const newProgress = (currentJob.progress_current || 0) + 1;
+
+  const update: Record<string, unknown> = {
+    progress_current: newProgress,
+  };
+
+  if (usage) {
+    update.total_input_tokens =
+      (currentJob.total_input_tokens || 0) + usage.inputTokens;
+    update.total_output_tokens =
+      (currentJob.total_output_tokens || 0) + usage.outputTokens;
+    update.total_cost =
+      parseFloat(String(currentJob.total_cost || 0)) + usage.cost;
+  }
+
+  if (newProgress >= (currentJob.progress_total || 0)) {
+    update.status = "completed";
+    update.completed_at = new Date().toISOString();
+  }
+
+  await supabase.from("processing_jobs").update(update).eq("id", jobId);
+}

@@ -72,6 +72,10 @@ export function WorkflowPanelInner({
   const [processLimit, setProcessLimit] = useState(5);
   const [forceReprocess, setForceReprocess] = useState(false);
 
+  // Prompt versioning state
+  const [promotedPrompts, setPromotedPrompts] = useState<{id: string; name: string; model_provider: string; model_name: string; is_active: boolean; is_promoted: boolean}[]>([]);
+  const [selectedPromptIds, setSelectedPromptIds] = useState<string[]>([]);
+
   const fetchEpisodes = useCallback(async () => {
     setLoading(true);
     try {
@@ -151,6 +155,26 @@ export function WorkflowPanelInner({
 
     setPrevFingerprint(fingerprint);
   }, [isPolling, pollCount, episodes, prevFingerprint, stableCount]);
+
+  // Fetch promoted prompts on mount
+  useEffect(() => {
+    async function fetchPrompts() {
+      try {
+        const res = await fetch("/api/admin/eval/prompts");
+        if (!res.ok) return;
+        const data = await res.json();
+        const allPrompts = data.prompts || data || [];
+        const promoted = allPrompts.filter((p: { is_promoted: boolean }) => p.is_promoted === true);
+        setPromotedPrompts(promoted);
+        // Pre-select the active prompt
+        const activeIds = promoted.filter((p: { is_active: boolean }) => p.is_active).map((p: { id: string }) => p.id);
+        setSelectedPromptIds(activeIds);
+      } catch {
+        /* ignore */
+      }
+    }
+    fetchPrompts();
+  }, []);
 
   // ─── Step 1: Discovery ───────────────────────────────────────
   const handleResolveChannel = async () => {
@@ -238,6 +262,7 @@ export function WorkflowPanelInner({
           showId,
           limit: limit || 0,
           forceReprocess,
+          promptIds: selectedPromptIds,
         }),
       });
       const data = await res.json();
@@ -596,6 +621,93 @@ export function WorkflowPanelInner({
             )}
           </p>
 
+          {/* Prompt Versions */}
+          {promotedPrompts.length > 0 && (
+            <div>
+              <div className="mb-2 text-xs font-medium text-zinc-500">Prompt Versions</div>
+              <div className="space-y-1.5 rounded border border-zinc-200 bg-zinc-50 p-3">
+                {promotedPrompts.map((prompt) => (
+                  <div key={prompt.id} className="flex items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedPromptIds.includes(prompt.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedPromptIds((prev) => [...prev, prompt.id]);
+                        } else {
+                          setSelectedPromptIds((prev) => prev.filter((id) => id !== prompt.id));
+                        }
+                      }}
+                      className="rounded border-zinc-300"
+                    />
+                    <span className="font-medium">{prompt.name}</span>
+                    <span className="text-xs text-zinc-400">
+                      ({prompt.model_provider}/{prompt.model_name})
+                    </span>
+                    {prompt.is_active && (
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                        Active
+                      </span>
+                    )}
+                    {!prompt.is_active && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/admin/prompts/activate", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ promptId: prompt.id }),
+                            });
+                            if (res.ok) {
+                              setPromotedPrompts((prev) =>
+                                prev.map((p) => ({ ...p, is_active: p.id === prompt.id }))
+                              );
+                            } else {
+                              const data = await res.json();
+                              alert(`Error: ${data.error}`);
+                            }
+                          } catch (err) {
+                            alert(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+                          }
+                        }}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Set Active
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        try {
+                          const newPromoted = !prompt.is_promoted;
+                          const res = await fetch("/api/admin/prompts/promote", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ promptId: prompt.id, promoted: newPromoted }),
+                          });
+                          if (res.ok) {
+                            if (!newPromoted) {
+                              // Demoted — remove from list
+                              setPromotedPrompts((prev) => prev.filter((p) => p.id !== prompt.id));
+                              setSelectedPromptIds((prev) => prev.filter((id) => id !== prompt.id));
+                            }
+                          } else {
+                            const data = await res.json();
+                            alert(`Error: ${data.error}`);
+                          }
+                        } catch (err) {
+                          alert(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+                        }
+                      }}
+                      className="text-xs text-zinc-500 hover:underline"
+                    >
+                      Demote
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-zinc-500">
@@ -701,6 +813,7 @@ export function WorkflowPanelInner({
                         <th className="px-3 py-2 text-right font-medium">Duration</th>
                         <th className="px-3 py-2 text-center font-medium">Transcript</th>
                         <th className="px-3 py-2 text-center font-medium">AI Status</th>
+                        <th className="px-3 py-2 text-center font-medium">Versions</th>
                         <th className="px-3 py-2 text-right font-medium">Cost</th>
                         <th className="px-3 py-2 text-left font-medium">Summary</th>
                       </tr>
@@ -733,6 +846,9 @@ export function WorkflowPanelInner({
                           </td>
                           <td className="px-3 py-2 text-center">
                             <MiniStatus status={ep.processing_status} />
+                          </td>
+                          <td className="px-3 py-2 text-center text-zinc-300">
+                            {"\u2014"}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-right text-zinc-500 tabular-nums">
                             {ep.processing_cost ? formatCost(ep.processing_cost) : "\u2014"}

@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchPublishedEpisodes } from "@/lib/queries/episodes";
 import {
   EpisodeCard,
-  type EpisodeData,
   groupByWeek,
 } from "../../../_components/episode-card";
 
@@ -25,25 +25,12 @@ export default async function ShowPage({
 
   if (!show) notFound();
 
-  const { data: episodes } = await supabase
-    .from("episodes")
-    .select(
-      `id, title, slug, guest_name, summary, youtube_url, thumbnail_url, duration_display, published_at, created_at,
-       shows(name, slug),
-       insights(position, content)`
-    )
-    .eq("show_id", show.id)
-    .eq("is_published", true)
-    .eq("processing_status", "completed")
-    .order("published_at", { ascending: false })
-    .limit(100);
+  const { episodes } = await fetchPublishedEpisodes({
+    showId: show.id,
+    limit: 100,
+  });
 
-  const typed = (episodes ?? []) as unknown as EpisodeData[];
-  for (const ep of typed) {
-    ep.insights?.sort((a, b) => a.position - b.position);
-  }
-
-  const weekGroups = groupByWeek(typed);
+  const weekGroups = groupByWeek(episodes);
 
   return (
     <div>
@@ -60,11 +47,11 @@ export default async function ShowPage({
           </p>
         )}
         <p className="mt-2 text-sm text-zinc-500">
-          {typed.length} episode{typed.length !== 1 ? "s" : ""}
+          {episodes.length} episode{episodes.length !== 1 ? "s" : ""}
         </p>
       </div>
 
-      {typed.length === 0 ? (
+      {episodes.length === 0 ? (
         <p className="text-zinc-500">No episodes processed yet.</p>
       ) : (
         Array.from(weekGroups.entries()).map(([weekLabel, eps]) => (

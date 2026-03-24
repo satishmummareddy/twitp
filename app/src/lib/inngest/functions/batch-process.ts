@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /**
  * Fan-out function: receives a batch request, queries episodes,
  * and sends individual process-episode events.
+ * Supports multiple prompt IDs — creates one event per episode × prompt combo.
  */
 export const batchProcess = inngest.createFunction(
   {
@@ -12,13 +13,12 @@ export const batchProcess = inngest.createFunction(
     triggers: [{ event: "batch/process.requested" }],
   },
   async ({ event, step }) => {
-    const { jobId, showId, limit, forceReprocess } = event.data;
+    const { jobId, showId, limit, forceReprocess, promptIds } = event.data;
 
     // Step 1: Get episodes to process
     const episodes = await step.run("query-episodes", async () => {
       const supabase = createAdminClient();
 
-      // Get show info
       const { data: show } = await supabase
         .from("shows")
         .select("name")
@@ -27,7 +27,6 @@ export const batchProcess = inngest.createFunction(
 
       if (!show) throw new Error(`Show not found: ${showId}`);
 
-      // Get episodes that need processing (only full episodes, not shorts/clips)
       let query = supabase
         .from("episodes")
         .select("id, title, processing_status")
@@ -35,7 +34,7 @@ export const batchProcess = inngest.createFunction(
         .eq("content_type", "episode")
         .order("created_at", { ascending: true });
 
-      if (!forceReprocess) {
+      if (!forceReprocess && (!promptIds || promptIds.length === 0)) {
         query = query.neq("processing_status", "completed");
       }
 
@@ -52,7 +51,6 @@ export const batchProcess = inngest.createFunction(
     });
 
     if (episodes.episodes.length === 0) {
-      // Update job as completed with 0 episodes
       await step.run("mark-empty", async () => {
         const supabase = createAdminClient();
         await supabase
@@ -69,52 +67,76 @@ export const batchProcess = inngest.createFunction(
       return { processed: 0, message: "No episodes to process" };
     }
 
-    // Step 2: Update job with total count
-    await step.run("update-job-total", async () => {
+    // Step 2: Get prompt configs
+    const prompts = await step.run("get-prompts", async () => {
       const supabase = createAdminClient();
-      await supabase
-        .from("processing_jobs")
-        .update({ progress_total: episodes.episodes.length })
-        .eq("id", jobId);
-    });
 
-    // Step 3: Get active prompt config
-    const promptConfig = await step.run("get-prompt", async () => {
-      const supabase = createAdminClient();
+      if (promptIds && promptIds.length > 0) {
+        // Fetch specific prompts by ID
+        const { data } = await supabase
+          .from("prompts")
+          .select("id, template, model_provider, model_name")
+          .in("id", promptIds);
+
+        if (!data || data.length === 0) {
+          throw new Error("None of the specified prompts found");
+        }
+        return data;
+      }
+
+      // Fallback: use the active prompt
       const { data: prompt } = await supabase
         .from("prompts")
-        .select("template, model_provider, model_name")
+        .select("id, template, model_provider, model_name")
         .eq("name", "insights_extraction")
         .eq("is_active", true)
         .single();
 
-      if (!prompt) throw new Error("No active insights_extraction prompt found");
-      return prompt;
+      if (!prompt)
+        throw new Error("No active insights_extraction prompt found");
+      return [prompt];
     });
 
-    // Step 4: Fan out — send individual events for each episode
-    await step.sendEvent(
-      "fan-out-episodes",
-      episodes.episodes.map((ep) => ({
-        name: "episode/process.requested" as const,
-        data: {
-          episodeId: ep.id,
-          jobId,
-          showId,
-          showName: episodes.showName,
-          promptConfig: {
-            template: promptConfig.template,
-            model_provider: promptConfig.model_provider,
-            model_name: promptConfig.model_name,
+    // Total work = episodes × prompts
+    const totalWork = episodes.episodes.length * prompts.length;
+
+    // Step 3: Update job with total count
+    await step.run("update-job-total", async () => {
+      const supabase = createAdminClient();
+      await supabase
+        .from("processing_jobs")
+        .update({ progress_total: totalWork })
+        .eq("id", jobId);
+    });
+
+    // Step 4: Fan out — one event per episode × prompt
+    const events = [];
+    for (const ep of episodes.episodes) {
+      for (const prompt of prompts) {
+        events.push({
+          name: "episode/process.requested" as const,
+          data: {
+            episodeId: ep.id,
+            jobId,
+            showId,
+            showName: episodes.showName,
+            promptId: prompt.id,
+            promptConfig: {
+              template: prompt.template,
+              model_provider: prompt.model_provider,
+              model_name: prompt.model_name,
+            },
+            forceReprocess: !!forceReprocess,
           },
-          forceReprocess: !!forceReprocess,
-        },
-      }))
-    );
+        });
+      }
+    }
+
+    await step.sendEvent("fan-out-episodes", events);
 
     return {
-      processed: episodes.episodes.length,
-      message: `Queued ${episodes.episodes.length} episodes for processing`,
+      processed: totalWork,
+      message: `Queued ${episodes.episodes.length} episodes × ${prompts.length} prompts = ${totalWork} tasks`,
     };
   }
 );
