@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export interface PromptData {
   id: string;
@@ -40,6 +40,37 @@ export function PromptEditor({
   const [modelName, setModelName] = useState("claude-sonnet-4-5-20250929");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Build the final prompt preview — shows exactly what the AI will receive
+  const finalPrompt = useMemo(() => {
+    if (!template) return "";
+
+    const sampleShow = "Lenny's Podcast";
+    const sampleTitle = "How to build a high-performing growth team | Adam Fishman";
+    const sampleTranscript = "[... transcript would appear here — typically 60,000-90,000 characters ...]";
+
+    let prompt = template
+      .replace("{show_name}", sampleShow)
+      .replace("{episode_title}", sampleTitle)
+      .replace("{transcript}", sampleTranscript);
+
+    const autoAppended: string[] = [];
+
+    if (!template.includes("{transcript}")) {
+      const contextBlock = `\n\n**Show:** ${sampleShow}\n**Episode:** ${sampleTitle}\n\n**Transcript:**\n${sampleTranscript}`;
+      prompt += contextBlock;
+      autoAppended.push("transcript context (template missing {transcript})");
+    }
+
+    if (!prompt.toLowerCase().includes("json")) {
+      const jsonBlock = `\n\nRespond with valid JSON only, in this format:\n{"guest_name": "...", "summary": "...", "insights": ["insight1", "insight2", ...], "topics": ["topic-slug-1", "topic-slug-2", ...]}`;
+      prompt += jsonBlock;
+      autoAppended.push("JSON format instructions");
+    }
+
+    return { text: prompt, autoAppended };
+  }, [template]);
 
   function loadPrompt(prompt: PromptData) {
     onSelectPrompt(prompt);
@@ -277,20 +308,45 @@ export function PromptEditor({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium">
-            Prompt Template
-          </label>
-          <textarea
-            value={template}
-            onChange={(e) => setTemplate(e.target.value)}
-            rows={16}
-            className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-sm"
-            placeholder="Enter your prompt template..."
-          />
-          <p className="mt-1 text-xs text-zinc-500">
-            Variables: <code>{"{show_name}"}</code>,{" "}
-            <code>{"{episode_title}"}</code>, <code>{"{transcript}"}</code>
-          </p>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-sm font-medium">
+              {showPreview ? "Final Prompt Preview" : "Prompt Template"}
+            </label>
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              {showPreview ? "Edit Template" : "Preview Final Prompt"}
+            </button>
+          </div>
+
+          {showPreview ? (
+            <div>
+              {finalPrompt && typeof finalPrompt === "object" && finalPrompt.autoAppended.length > 0 && (
+                <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  Auto-appended: {finalPrompt.autoAppended.join(", ")}
+                </div>
+              )}
+              <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap rounded border border-zinc-300 bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-700">
+                {typeof finalPrompt === "object" ? finalPrompt.text : ""}
+              </pre>
+            </div>
+          ) : (
+            <>
+              <textarea
+                value={template}
+                onChange={(e) => setTemplate(e.target.value)}
+                rows={16}
+                className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-sm"
+                placeholder="Enter your prompt template..."
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                Variables: <code>{"{show_name}"}</code>,{" "}
+                <code>{"{episode_title}"}</code>, <code>{"{transcript}"}</code>
+                {" "}— If omitted, transcript and JSON format are auto-appended.
+              </p>
+            </>
+          )}
         </div>
 
         {error && (
