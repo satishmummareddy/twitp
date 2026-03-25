@@ -77,14 +77,13 @@ export default async function BatchOverviewPage() {
     .select("id, show_id, job_type, status, progress_current, progress_total")
     .eq("status", "running");
 
-  // Get total cost from completed jobs
+  // Get total cost from ALL jobs (including failed — episodes may have succeeded before job timed out)
   const { data: costData } = await supabase
     .from("processing_jobs")
     .select("total_cost")
-    .eq("status", "completed")
     .not("total_cost", "is", null);
 
-  const totalCost = (costData || []).reduce((sum, j) => sum + (j.total_cost || 0), 0);
+  const totalCost = (costData || []).reduce((sum, j) => sum + (parseFloat(j.total_cost) || 0), 0);
 
   // Aggregate stats
   const totalShows = shows?.length || 0;
